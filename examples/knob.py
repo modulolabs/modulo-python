@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import modulo, math
 
 # Open the first Modulo Controller serial port
@@ -42,6 +44,6 @@ while (1) :
         display.draw_rectangle(20,20,10,10)
         display.update()
 
-        knob.set_color(255,0,255)
+        knob.set_color(255,255,0)
 
         print clock.is_set(), clock.is_battery_low(), clock.get_datetime()
