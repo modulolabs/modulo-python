@@ -2,10 +2,9 @@
 
 import modulo, datetime
 
-port = modulo.SerialPort()
-
-clock = port.get_clock()
+port = modulo.Port()
+clock = modulo.Clock(port)
 
 clock.set_datetime(datetime.datetime.now())
 
-print clock.get_datetime()
+print(clock.get_datetime())
