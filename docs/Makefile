@@ -175,3 +175,8 @@ pseudoxml:
 	$(SPHINXBUILD) -b pseudoxml $(ALLSPHINXOPTS) $(BUILDDIR)/pseudoxml
 	@echo
 	@echo "Build finished. The pseudo-XML files are in $(BUILDDIR)/pseudoxml."
+
+upload:
+	@echo "Uploading"
+	scp -r _build/html "root@104.236.184.33:/var/www/python/"
+
