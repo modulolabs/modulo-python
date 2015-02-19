@@ -45,5 +45,3 @@ while (1) :
         display.update()
 
         knob.set_color(255,255,0)
-
-        print clock.is_set(), clock.is_battery_low(), clock.get_datetime()
