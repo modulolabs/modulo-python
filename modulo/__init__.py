@@ -268,8 +268,14 @@ class Knob(Module) :
     def set_color(self, red, green, blue) :
         """Set the color of the knob's LED. *red*, *green*, and *blue* should be
         between 0 and 1"""
-        sendData = [r*255,g*255,b*255]
+        sendData = [int(red*255), int(green*255), int(blue*255)]
         self.transfer(self._FunctionSetColor, sendData, 0)
+
+    def set_hsv(self, h, s, v) :
+        import colorsys
+        r,g,b = colorsys.hsv_to_rgb(h,s,v)
+        return self.set_color(r,g,b)
+
 
     def get_button(self) :
         """Return whether the knob is currently being pressed"""
@@ -456,13 +462,12 @@ class Display(Module) :
         self._previousBuffer = bytearray(self._width*self._height//8)
 
         for i in range(self._width*self._height//8) :
-            self._previousBuffer[i] = 0xFF
+            self._previousBuffer[i] = 0
 
         from PIL import Image, ImageDraw, ImageFont
         self._font = ImageFont.load_default()
         self._image = Image.new("1", (self._width, self._height))
         self._drawContext = ImageDraw.Draw(self._image)
-        self._drawContext.text((0,0), "Hello", fill=1)
 
     def get_width(self) :
         "The width in pixels of the display"
@@ -547,7 +552,7 @@ class Display(Module) :
                     index = page*self._width + x + i
                     if self._currentBuffer[index] != self._previousBuffer[index] :
                         needsTransfer = True
-                    self._previousBuffer[index] = self._currentBuffer[index]
+                        self._previousBuffer[index] = self._currentBuffer[index]
                     dataToSend.append(self._currentBuffer[index])
 
                 if (needsTransfer) :
