@@ -15,7 +15,6 @@ class Port(object) :
 
     """
 
-
     _BroadcastAddress = 9
 
     _BroadcastCommandGlobalReset = 0
@@ -35,14 +34,23 @@ class Port(object) :
         def __init__(self, path=None, controller=0) :
             super(Port._SerialConnection, self).__init__()
 
+            from serial.tools import list_ports
+
             if path is None :
-                from serial.tools.list_ports import comports
-                for port in comports() :
+
+                # Modulo Controller will contain in the hardware description:
+                #    "16d0:a67" on OSX
+                #    "16D0:0A67" on Windows 71
+                for port in list_ports.grep("16d0:0?a67") :
                     if (port[1] == 'Modulo Controller') :
                         if (controller == 0) :
                             path = port[0]
                             break
                         controller -= 1
+
+            if path is None :
+                print(list_ports.comports())
+                raise IOError("Couldn't find a Modulo Controller connected via USB")
 
             self._serial = serial.Serial(path, 9600, timeout=5)
 
@@ -50,17 +58,17 @@ class Port(object) :
             if address is None :
                 return None
 
-            self._serial.write('T')           # Transfer start token
-            self._serial.write(chr(address))
-            self._serial.write(chr(command))
-            self._serial.write(chr(len(sendData)))
-            for c in sendData :
-                self._serial.write(chr(c))
-            self._serial.write(chr(receiveLen))
+            sendBuffer = [ord('T'), address, command, len(sendData)] + sendData + [receiveLen]
+
+            self._serial.write(bytearray(sendBuffer))
 
             retval = ord(self._serial.read(1))
             if retval and receiveLen > 0:
-                return [ord(x) for x in self._serial.read(receiveLen)]
+                data = self._serial.read(receiveLen)
+                if isinstance(data, str) :
+                    return [ord(x) for x in data]
+                else :
+                    return data
             return None
 
     class _I2CConnection(object) :
@@ -444,10 +452,10 @@ class Display(Module) :
         self._width = 128
         self._height = 64
         self._cursor = (0,0)
-        self._currentBuffer = bytearray(self._width*self._height/8)
-        self._previousBuffer = bytearray(self._width*self._height/8)
+        self._currentBuffer = bytearray(self._width*self._height//8)
+        self._previousBuffer = bytearray(self._width*self._height//8)
 
-        for i in range(self._width*self._height/8) :
+        for i in range(self._width*self._height//8) :
             self._previousBuffer[i] = 0xFF
 
         from PIL import Image, ImageDraw, ImageFont
@@ -526,11 +534,11 @@ class Display(Module) :
         for x in range(self._width) :
             for y in range(self._height) :
                 if self._image.getpixel( (x,y) ) :
-                    self._currentBuffer[x+ (y/8)*self._width] |=  (1 << (y&7));
+                    self._currentBuffer[x+ (y//8)*self._width] |=  (1 << (y&7));
                 else :
-                    self._currentBuffer[x+ (y/8)*self._width] &=  ~(1 << (y&7));
+                    self._currentBuffer[x+ (y//8)*self._width] &=  ~(1 << (y&7));
 
-        for page in range(self._height/8) :
+        for page in range(self._height//8) :
             for x in range(0, self._width, 16) :
                 dataToSend = [page, x]
 
