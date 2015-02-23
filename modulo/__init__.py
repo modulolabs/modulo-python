@@ -42,11 +42,10 @@ class Port(object) :
                 #    "16d0:a67" on OSX
                 #    "16D0:0A67" on Windows 71
                 for port in list_ports.grep("16d0:0?a67") :
-                    if (port[1] == 'Modulo Controller') :
-                        if (controller == 0) :
-                            path = port[0]
-                            break
-                        controller -= 1
+                    if (controller == 0) :
+                        path = port[0]
+                        break
+                    controller -= 1
 
             if path is None :
                 print(list_ports.comports())
