@@ -303,19 +303,86 @@ class DPad(Module) :
 
     _FunctionGetButtons = 0
 
+    RIGHT = 0
+    UP = 1
+    LEFT = 2
+    DOWN = 3
+    CENTER = 4
+
+    class Buttons(object) :
+        def __init__(self, values = 0) :
+            self.values = values
+            self.right = values & 0b00001
+            self.up = values & 0b00010
+            self.left = values & 0b00100
+            self.down = values & 0b01000
+            self.center = values & 0b10000
+
     def __init__(self, port, deviceID = None) :
         super(DPad, self).__init__(port, "co.modulo.dpad", deviceID)    
-    
-    def get_button(self, button) :
-        """Return whether the specified button is currently being pressed"""
-        return bool(self.getButtons() & (1 << button))
 
-    def get_buttons(self) :
-        """Return a byte with the state of each button in a different bit"""
+    def _get_buttons(self) :
         receivedData = self.transfer(self._FunctionGetButtons, [], 1)
         if receivedData is None :
             return 0
         return receivedData[0]
+    
+    def get_button(self, button) :
+        """Return whether the specified button is currently being pressed"""
+        return bool(self._get_buttons() & (1 << button))
+
+    def get_buttons(self) :
+        """Return a byte with the state of each button in a different bit"""
+        return self.Buttons(self._get_buttons())
+
+class Motor(Module) :
+
+    _FunctionSetValue = 0
+    _FunctionGetCurrent = 1
+    _FunctionSetEnabled = 2
+    _FunctionSetFrequency = 3
+
+    def __init__(self, port, deviceID = None) :
+         super(Motor, self).__init__(port, "co.modulo.motor", deviceID)    
+
+    def enable_a(self, enabled=True) :
+        "Enable the outputs for motor A (channels 0 and 1)"
+        # Channels are enabled in pairs, so enabling 0 also enables 1
+        self.transfer(self._FunctionSetEnabled, [0, enabled], 0)
+
+    def enable_b(self, enabled=True) :
+        "Enable the outputs for motor B (channels 2 and 3)"
+        # Channels are enabled in pairs, so enabling 2 also enables 3
+        self.transfer(self._FunctionSetEnabled, [2, enabled], 0)
+
+    def set_channel(self, channel, value) :
+        """
+        Set the value (between 0 and 1) of the specified channel (0, 1, 2 or 3)."
+        The outputs must also be enabled by calling enable_a() or enable_b()
+        """
+        intValue = int(min(1, max(0, value))*0xFFFF)
+        dataToSend = [channel, intValue >> 8, intValue & 0xFF]
+        self.transfer(self._FunctionSetValue, dataToSend, 0)
+
+    def set_speed_a(self, value) :
+        "Set the speed of Motor A (channels 0 and 1)"
+        "The speed must be between -1 and 1"
+        if (value > 0) :
+            self.set_channel(0, value)
+            self.set_channel(1, 0)
+        else :
+            self.set_channel(0, 0)
+            self.set_channel(1, -value)
+
+    def set_speed_b(self, value) :
+        "Set the speed of Motor B (channels 2 and 3)"
+        "The speed must be between -1 and 1"
+        if (value > 0) :
+            self.set_channel(2, value)
+            self.set_channel(3, 0)
+        else :
+            self.set_channel(2, 0)
+            self.set_challen(3, -value)
 
 class Thermocouple(Module) :
     """
