@@ -18,7 +18,6 @@ class Pong :
         self._height = self._display.get_height()
         self._paddleWidth = 3
         self._paddleHeight = 10
-        self._leftPaddleSpeed = 30
 
         self._leftPaddlePos = self._height/2
         self._rightPaddlePos = self._height/2
@@ -29,9 +28,11 @@ class Pong :
         self._ballX = 10
         self._ballY = self._height/2
 
-        self._ballSpeed = 30
+        self._ballSpeed = 80
         self._ballDx = .9
         self._ballDy = .1
+
+        self._leftPaddleSpeed = self._ballSpeed*.9
 
         self._rightScore = 0
         self._leftScore = 0
