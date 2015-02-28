@@ -70,6 +70,11 @@ class Port(object) :
                     return data
             return None
 
+        def close(self) :
+            self._serial.write('E')
+            self._serial.flush();
+
+
     class _I2CConnection(object) :
 
         def __init__(self, i2cPath) :
@@ -100,6 +105,8 @@ class Port(object) :
             return [ord(x) for x in receiveBuffer]
 
 
+
+
     def __init__(self, serialPortPath=None, i2cPortPath=None) :
         self._portInitialized = False
         self._lastAssignedAddress = 9
@@ -109,6 +116,8 @@ class Port(object) :
         else :
             self._connection = self._SerialConnection(serialPortPath)
 
+        import atexit
+        atexit.register(self._connection.close)
 
     def _bytesToString(self, bytes) :
         s = ''
@@ -381,7 +390,7 @@ class Motor(Module) :
             self.set_channel(3, 0)
         else :
             self.set_channel(2, 0)
-            self.set_challen(3, -value)
+            self.set_channel(3, -value)
 
 class Thermocouple(Module) :
     """
