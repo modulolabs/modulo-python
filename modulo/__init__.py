@@ -403,7 +403,7 @@ class Thermocouple(Module) :
     InvalidTemperature = -1000
 
     def __init__(self, port, deviceID = None) :
-        super(ThermocoupleModule, self).__init__(port, "co.modulo.thermocouple", deviceID)
+        super(Thermocouple, self).__init__(port, "co.modulo.thermocouple", deviceID)
 
 
     def get_celsius(self) :
@@ -425,7 +425,7 @@ class Thermocouple(Module) :
         Return the thermocouple temperature in celsius.
         Returns None if no probe is connected
         """
-        tempC = self.getTemperatureC()
+        tempC = self.get_celsius()
         if (tempC is None) :
             return None
         return tempC*1.8 + 32
