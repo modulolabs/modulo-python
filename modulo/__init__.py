@@ -510,13 +510,43 @@ class Controller(Module) :
 
     TODO: Needs additional API for accessing I/O pins.
     """
+    _FunctionSetPinDirection = 0
+    _FunctionGetDigitalInput = 1
+    _FunctionSetDigitalOutput = 2
+    _FunctionSetPWMOutput = 3
+    _FunctionGetAnalogInput = 4
+
 
     def __init__(self, port) :
-        super(Controller, self).__init__(port, "co.modulo.controller", deviceID)
+        super(Controller, self).__init__(port, "co.modulo.controller", None)
 
+    def setPinDirection(self, pin, output, pullup) :
+        val = (pin << 2) | (pullup << 1) | output;
+        self.transfer(self._FunctionSetPinDirection, [val], 0)
+
+    def getDigitalInput(self, pin) :
+        receivedData = self.transfer(self._FunctionGetDigitalInput, [pin], 1)
+        return (receivedData[0] != 0)
+
+    def setDigitalOutput(self, pin, value) :
+        data = (pin << 1) | value
+        self.transfer(self._FunctionSetDigitalOutput, [data], 0)
+
+    def setPWMOutput(self, pin, value) :
+        intValue = int(255*max(0, min(1, value)))
+        self.transfer(self._FunctionSetPWMOutput, [pin, intValue], 0)
+
+    def getAnalogInput(self, pin) :
+        receivedData = self.transfer(self._FunctionGetAnalogInput, [pin], 2)
+        return ctypes.c_short(receivedData[0] | (receivedData[1] << 8)).value
+
+    # DEPRECATED
     def readTemperatureProbe(self, pin) :
         receivedData = self.transfer(self._FunctionReadTemperatureProbe, [pin], 2)
         return ctypes.c_short(receivedData[0] | (receivedData[1] << 8)).value
+
+
+
 
 class Display(Module) :
     """
