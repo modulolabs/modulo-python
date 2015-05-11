@@ -52,14 +52,21 @@ class Port(object) :
                 raise IOError("Couldn't find a Modulo Controller connected via USB")
 
             self._serial = serial.Serial(path, 9600, timeout=5)
+            self._eventData = []
 
         def transfer(self, address, command, sendData, receiveLen) :
             if address is None :
                 return None
 
-            sendBuffer = [ord('T'), address, command, len(sendData)] + sendData + [receiveLen]
+            sendBuffer = [ord('S'), address, command, len(sendData)] + sendData + [receiveLen]
 
             self._serial.write(bytearray(sendBuffer))
+
+            code = self._serial.read(1)
+            while (code == 'E') :
+                self._eventData.append(self._serial.read(5))
+                code = self._serial.read(1)
+
 
             retval = ord(self._serial.read(1))
             if retval and receiveLen > 0:
@@ -70,8 +77,19 @@ class Port(object) :
                     return data
             return None
 
+        def retrieveEventData(self) :
+            if (self._serial.inWaiting()) :
+                code = self._serial.read(1)
+                while (code == 'E') :
+                    self._eventData.append(self._serial.read(5))
+                    code = self._serial.read(1)
+            eventData = self._eventData
+            self._eventData = []
+            return eventData
+
+
         def close(self) :
-            self._serial.write('E')
+            self._serial.write('Q')
             self._serial.flush();
 
 
@@ -302,6 +320,51 @@ class Knob(Module) :
     def get_angle(self) :
         """Return the knob's angle in degrees"""
         return self.get_position()*360/24
+
+
+class Joystick(Module):
+    """
+    Connect to the module with the specified *deviceID* on the given *port*.
+    If *deviceID* isn't specified, finds the first unused KnobModule.
+    """ 
+
+    FUNCTION_GET_BUTTON=0
+    FUNCTION_GET_POSITION=1
+
+    EVENT_BUTTON_CHANGED=0
+    EVENT_POSITION_CHANGED=1
+
+    def __init__(self, port, deviceID = None) :
+        super(Joystick, self).__init__(port, "co.modulo.joystick", deviceID)
+
+        self._buttonState = 0
+        self._hPos = 128
+        self._vPos = 128
+        self._buttonPressCallback = None
+        self._buttonReleaseCallback = None
+        self._positionChangeCallback = None
+
+    def _refreshState(self) :
+        self._buttonState = self.transfer(self.FUNCTION_GET_BUTTON, [], 1)[0]
+
+        self._hPos, self._vPos = self.transfer(self.FUNCTION_GET_POSITION, [], 2)
+        
+    def getButton(self) :
+        self._refreshState()
+        return self._buttonState
+
+    def getHPos(self) :
+        self._refreshState()
+
+        return self._hPos*2.0/255.0 - 1;
+
+    def getVPos(self) :
+        self._refreshState()
+
+        return self._vPos*2.0/255.0 - 1;
+
+
+
 
 class DPad(Module) :
     """
@@ -554,25 +617,34 @@ class Display(Module) :
     If *deviceID* isn't specified, finds the first unused MiniDisplayModule.
     """
 
-    SetPixelsFunction = 0
+    _FUNCTION_APPEND_OP = 0
+    _FUNCTION_IS_COMPLETE = 1
+    _FUNCTION_GET_BUTTONS = 2
+
+    _OpRefresh = 0
+    _OpFillScreen = 1
+    _OpDrawLine = 2
+    _OpSetLineColor = 3
+    _OpSetFillColor = 4
+    _OpSetTextColor = 5
+    _OpDrawRect = 6
+    _OpDrawCircle = 7
+    _OpDrawTriangle = 8
+    _OpDrawString = 9
+    _OpSetCursor = 10
+    _OpSetTextSize = 11
+
+    Black = (0,0,0,255)
+    White = (255, 255, 255, 255)
+    Clear = (0,0,0,0)
 
     def __init__(self, port, deviceID = None) :
 
-        super(Display, self).__init__(port, "co.modulo.MiniDisplay", deviceID)
+        super(Display, self).__init__(port, "co.modulo.colordisplay", deviceID)
 
-        self._width = 128
+        self._width = 96
         self._height = 64
-        self._cursor = (0,0)
-        self._currentBuffer = bytearray(self._width*self._height//8)
-        self._previousBuffer = bytearray(self._width*self._height//8)
-
-        for i in range(self._width*self._height//8) :
-            self._previousBuffer[i] = 0
-
-        from PIL import Image, ImageDraw, ImageFont
-        self._font = ImageFont.load_default()
-        self._image = Image.new("1", (self._width, self._height))
-        self._drawContext = ImageDraw.Draw(self._image)
+        self._isRefreshing = False
 
     def get_width(self) :
         "The width in pixels of the display"
@@ -581,9 +653,6 @@ class Display(Module) :
     def get_height(self) :
         "The height in pixels of the display"
         return self._height
-
-    def set_cursor(self, x, y) :
-        self._cursor = (x,y)
 
     def write(self, obj, color=1) :
         first = True
@@ -603,62 +672,117 @@ class Display(Module) :
     def writeln(self, obj, color=1) :
         self.write(str(obj) + "\n", color)
 
-    def clear(self, color=0) :
-        "Clear the display, setting all pixels to the specified *color*."
-        self.draw_rectangle(0, 0, self._width, self._height, fill=color, outline=None)
+    def clear(self) :
+        self.fillScreen(self.Black)
+        self.setCursor(0,0)
 
-    def draw_pixel(self, x, y, color) :
-        "Set a single pixel to the specified *color*"
-        self._drawContext.point((x,y), color)
+    def setLineColor(self, color) :
+        self._waitOnRefresh()
+
+        sendData = [self._OpSetLineColor, color[0], color[1], color[2], color[3]]
+        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
+
+    def setFillColor(self, color) :
+        self._waitOnRefresh()
+
+        sendData = [self._OpSetFillColor, color[0], color[1], color[2], color[3]]
+        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
+
+    def setTextColor(self, color) :
+        self._waitOnRefresh()
+
+        sendData = [self._OpSetTextColor, color[0], color[1], color[2], color[3]]
+        self.transfer(self._FUNCTION_APPEND_OP, sendData, 5, 0, 0)
+
+    def setTextSize(self, size):
+        self._waitOnRefresh()
+
+        sendData = [self._OpSetTextSize, size]
+        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
+
+    def setCursor(self, x, y) :
+        self._waitOnRefresh()
+
+        sendData = [self._OpSetCursor, x, y]
+        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
+
+    def refresh(self):
+        self._waitOnRefresh()
+
+        sendData = [self._OpRefresh]
+        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
+
+        self._isRefreshing = True
+
+    def fillScreen(self, color):
+        self._waitOnRefresh()
+
+        sendData = [self._OpFillScreen, color[0], color[1], color[2], color[3]]
+        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
+
+    def drawLine(self, x0, y0, x1, y1):
+        self._waitOnRefresh()
+
+        # XXX: Need to properly clip the line to the display bounding rect
+        if (x0 < 0 or x0 >= self.get_width() or
+            y0 < 0 or y0 >= self.get_height() or
+            x1 < 0 or x1 >= self.get_width() or
+            y1 < 0 or y1 >= self.get_height()) :
+            return
+
+        sendData = [self._OpDrawLine, x0, y0, x1, y1]
+        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
+
+    def drawRect(self, x, y, w, h, radius):
+        self._waitOnRefresh()
+
+        sendData = [self._OpDrawRect, x, y, w, h, radius]
+        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
+
+    def _isComplete(self) :
+        data = self.transfer(self._FUNCTION_IS_COMPLETE, [], 1)
+        if data is None :
+            return True
+        return data[0]
+
+    def _waitOnRefresh(self) :
+        if (self._isRefreshing) :
+            self._isRefreshing = False;
+            import time
+            while not self._isComplete() :
+                time.sleep(.01)
+
+    def getButton(self, button) :
+        return self.getButtons() & (1 << button);
+
+    def getButtons(self) :
+        receivedData = transfer(self._FUNCTION_GET_BUTTONS, [], 1)
+        if (receiveData is None) :
+            return False
+
+        return receivedData[0]
+
+    def drawSplashScreen(self):
+        self.setFillColor((90,0,50));
+        self.setLineColor((0,0,0,0));
+        self.drawRect(0, 0, WIDTH, HEIGHT);
+        self.setCursor(0, 40);
+
+        self.write("     MODULO");
+
+        self.setFillColor((255,255,255));
+
+        self.drawLogo(WIDTH/2-18, 10, 35, 26);
     
-    def draw_line(self, points, color=1, width=1) :
-        """
-        Draw lines connecting the specified points (a sequence of (x,y) tuples)
-        with the specified *color* and *width*
-        """
-        self._drawContext.line(points, fill=color, width=width)
 
-    def draw_ellipse(self, x, y, width, height, fill=None, outline=1) :
-        """
-        Draw an elipse centered at *x*,*y* with given *width* and *height*
-        Optionally *fill* and *outline* the elipse with the specified
-        """
-        self._drawContext.ellipse([x,y,x+width,y+height], fill=fill, outline=outline)
+    def drawLogo(self, x, y, width, height):
+        self.lineWidth = width/7;
 
-    def draw_arc(self, x, y, w, h, start, end, outline) :
-        self._drawContext.arc([x,y,x+w, y+h], start, end, fill=outline)
+        self.drawRect(x, y, width, lineWidth, 1);
+        self.drawRect(x, y, lineWidth, height, 1);
+        self.drawRect(x+width-lineWidth, y, lineWidth, height, 1);
 
-    def draw_pie_slice(self, x, y, w, h, start, end, fill=None, outline=1) :
-        self._drawContext.arc([x,y,x+w, y+h], start, end, fill=fill, outline=outline)
+        self.drawRect(x+lineWidth*2, y+lineWidth*2, lineWidth, height-lineWidth*2, 1);
+        self.drawRect(x+lineWidth*4, y+lineWidth*2, lineWidth, height-lineWidth*2, 1);
+        self.drawRect(x+lineWidth*2, y+height-lineWidth, lineWidth*3, lineWidth, 1);
 
-    def draw_rectangle(self, x, y, w, h, fill=None, outline=1) :
-        self._drawContext.rectangle([x,y,x+w,y+h],fill=fill, outline=outline)
-
-    def draw_polygon(self, points, fill, outline) :
-        self._drawContext.polygon(points, fill=fill, outline=outline)
-
-    def update(self) :
-        """Update the display with the current image"""
-
-        # Copy the pixels from the PIL image into the _currentBuffer bytearray
-        for x in range(self._width) :
-            for y in range(self._height) :
-                if self._image.getpixel( (x,y) ) :
-                    self._currentBuffer[x+ (y//8)*self._width] |=  (1 << (y&7));
-                else :
-                    self._currentBuffer[x+ (y//8)*self._width] &=  ~(1 << (y&7));
-
-        for page in range(self._height//8) :
-            for x in range(0, self._width, 16) :
-                dataToSend = [page, x]
-
-                needsTransfer = False
-                for i in range(16) :
-                    index = page*self._width + x + i
-                    if self._currentBuffer[index] != self._previousBuffer[index] :
-                        needsTransfer = True
-                        self._previousBuffer[index] = self._currentBuffer[index]
-                    dataToSend.append(self._currentBuffer[index])
-
-                if (needsTransfer) :
-                    self.transfer(self.SetPixelsFunction, dataToSend, 0)
