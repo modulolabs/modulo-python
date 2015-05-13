@@ -7,37 +7,51 @@ import sys
 
 lastUpdateTime = time.time()
 
+class Paddle(object) :
+
+    def __init__(self, knob, left) :
+        self.knob = knob
+        self.knobPos = knob.get_position()
+        self.paddlePos = .5
+        self.speed = .4
+        self.score = 0
+        self.paddleWidth = .01
+        self.paddleHeight = .1
+        self.knobWasPressed = False
+        self.isLeft = left
+        self.lastKnobMove = 0
+        self.idleTimeout = 5
+
+
 
 
 class Pong(QtGui.QFrame):
+
+    RunningState = 0
+    GoalState = 1
 
     def __init__(self) :
         super(Pong, self).__init__()
 
         self._port = modulo.Port()
         self._display = modulo.Display(self._port)
-        self._knob = modulo.Knob(self._port)
+        self._leftKnob = modulo.Knob(self._port, 1560)
+        self._rightKnob = modulo.Knob(self._port, 65282)
 
-        self._paddleWidth = .01
-        self._paddleHeight = .1
+        self._rightKnob.set_color(1,0,0)
+        self._leftKnob.set_color(0,0,1)
 
-        self._leftPaddlePos = .5
-        self._rightPaddlePos = .5
-        self._knobPos = self._knob.get_position()
+        self._leftPaddle = Paddle(self._leftKnob, True)
+        self._rightPaddle = Paddle(self._rightKnob, False)
 
         self._paused = True
         self._lastUpdateTime = time.time()
         self._ballX = .5
         self._ballY = .5
 
-        self._ballSpeed = .5
+        self._ballSpeed = .7
         self._ballDx = .9
         self._ballDy = .1
-
-        self._leftPaddleSpeed = self._ballSpeed*.9
-
-        self._rightScore = 0
-        self._leftScore = 0
 
         self.resize(640, 480)
         self.show()
@@ -45,6 +59,11 @@ class Pong(QtGui.QFrame):
         self._timer = QtCore.QTimer()
         self._timer.timeout.connect(self.onTimeout)
         self._timer.start(10)
+
+        self._stateStartTime = time.time()
+        self._state = self.RunningState
+
+        self.updateScoreboard()
 
     def paintEvent(self, e) :
 
@@ -56,120 +75,125 @@ class Pong(QtGui.QFrame):
         painter.drawEllipse(self.width()*self._ballX, self.height()*self._ballY,
             10, 10)
 
-        painter.fillRect(
-            self.width()*(1-self._paddleWidth),
-            self.height()*(self._rightPaddlePos-self._paddleHeight/2),
-            self.width()*self._paddleWidth,
-            self.height()*self._paddleHeight,
-            QtGui.QColor(255,255,255));
-
-        painter.fillRect(0,
-            self.height()*(self._leftPaddlePos-self._paddleHeight/2),
-            self.width()*self._paddleWidth,
-            self.height()*self._paddleHeight,
-            QtGui.QColor(255,255,255));
-
-    def update_input(self) :
-        newKnobPos = self._knob.get_position()
-        self._rightPaddlePos += .02*(newKnobPos - self._knobPos)
-        self._knobPos = newKnobPos
-
-        minPaddlePosition = self._paddleHeight/2
-        maxPaddlePosition = 1-self._paddleHeight/2
-
-        self._rightPaddlePos = max(self._rightPaddlePos, minPaddlePosition)
-        self._rightPaddlePos = min(self._rightPaddlePos, maxPaddlePosition)
-
-    def end_round(self) :
-        self.draw()
-
-        # Wait for 3 seconds
-        pauseStartTime = time.time()
-        while time.time() < pauseStartTime+3 :
-            self._knob.set_hsv(time.time()-pauseStartTime, 1, 1)
-        self._knob.set_color(0,0,0)
-
-        # Move the ball back to the center
-        self._ballX = .5
-        self._ballY = .5
-
-        # Reset the last update time, since we want to start the game from now
-        self._lastUpdateTime = time.time()
-
-    def check_right_goal(self) :
-        rightGoal = 1-self._paddleWidth
-
-        if (self._ballX < rightGoal) :
-            return False
-
-        posOnPaddle = self._ballY-self._rightPaddlePos
-
-        # Check and see if the ball missed the paddle
-        if abs(posOnPaddle) > .6*self._paddleHeight :
-            return True
-
-        angle = .5*math.pi*posOnPaddle/self._paddleHeight
-        self._ballDx = -math.cos(angle)
-        self._ballDy = math.sin(angle)
-        return False
-
-    def check_left_goal(self) :
-        leftGoal = self._paddleWidth
-
-        if (self._ballX > leftGoal) :
-            return False
-
-        posOnPaddle = self._ballY-self._leftPaddlePos
-
-        # Check and see if the ball missed the paddle
-        if abs(posOnPaddle) > .6*self._paddleHeight :
-            return True
-
-        angle = .5*math.pi*posOnPaddle/self._paddleHeight
-        self._ballDx = -math.cos(angle)
-        self._ballDy = math.sin(angle)
-        return False
+        for paddle in self._leftPaddle, self._rightPaddle :
+            if paddle.isLeft :
+                x = 0
+            else :
+                x = 1-paddle.paddleWidth
+            if paddle.isLeft :
+                color = QtGui.QColor(0,0,255)
+            else :
+                color = QtGui.QColor(255,0,0)
+            painter.fillRect(
+                self.width()*x,
+                self.height()*(paddle.paddlePos-paddle.paddleHeight/2),
+                self.width()*paddle.paddleWidth,
+                self.height()*paddle.paddleHeight,
+                color);
 
     def onTimeout(self) :
-        knobWasPressed = False
-        knobIsPressed = self._knob.get_button()
-        if knobIsPressed and not knobWasPressed :
-            self._paused = not self._paused
-            self._lastUpdateTime = time.time()
-        knobWasPressed = knobIsPressed
-
-        self.update_input()
         self.update_game()
-
         self.update()
 
-    def update_game(self) :
-        if self._paused :
+        if False :
+             # Wait for 3 seconds
+            pauseStartTime = time.time()
+            while time.time() < pauseStartTime+3 :
+                self._knob.set_hsv(time.time()-pauseStartTime, 1, 1)
+                self._knob.set_color(0,0,0)
+
+            # Move the ball back to the center
+            self._ballX = .5
+            self._ballY = .5
+            self._ballDx = .9
+            self._ballDy = .1
+
+            # Reset the last update time, since we want to start the game from now
+            self._lastUpdateTime = time.time()
+
+    def check_goal(self, paddle) :
+        if (paddle.isLeft and self._ballX > paddle.paddleWidth) :
+            return False
+        if (not paddle.isLeft and self._ballX < 1-paddle.paddleWidth) :
             return False
 
-        leftGoal = self._paddleWidth
+        posOnPaddle = self._ballY-paddle.paddlePos
 
-        if self.check_right_goal() :
-            self._leftScore += 1
-            self.end_round()
-            return
+        # Check and see if the ball missed the paddle
+        if abs(self._ballY-paddle.paddlePos) > paddle.paddleHeight/2:
+            return True
 
-        if self.check_left_goal() :
-            self._rightScore += 1
-            self.end_round()
-            return
+        angle = .5*math.pi*posOnPaddle*.8/paddle.paddleHeight
 
+        self._ballDx = -math.cos(angle)
+        self._ballDy = math.sin(angle)
+
+        if paddle.isLeft :
+            self._ballDx = -self._ballDx
+
+        return False
+    
+    def updateScoreboard(self) :
+        self._display.clear()
+        self._display.setTextSize(2)
+        self._display.setTextColor((255,0,0,255))
+        self._display.setCursor(0, 10);
+        self._display.write(str(self._rightPaddle.score))
+        self._display.setTextColor((0,0,255,255))
+        self._display.setCursor(0, 30);
+        self._display.write(str(self._leftPaddle.score))
+        self._display.refresh()
+        self._display.setTextColor((255,255,255,255))
+        self._display.setTextSize(1)
+
+
+    def update_game(self) :
         currentTime = time.time()
         dt = currentTime-self._lastUpdateTime
         self._lastUpdateTime = time.time()
 
-        if (self._leftPaddlePos > self._ballY) :
-            self._leftPaddlePos -= dt*self._leftPaddleSpeed
-        if (self._leftPaddlePos < self._ballY) :
-            self._leftPaddlePos += dt*self._leftPaddleSpeed
+        if self._state == self.GoalState :
+            self.updateScoreboard()
+            if (time.time() > self._stateStartTime+1) :
+                self._state = self.RunningState
+                self._ballX = .5
+                self._ballY = .5
+            return
 
-        if (self._ballX <= leftGoal) :
-            self._ballDx = -self._ballDx
+
+        for paddle in self._leftPaddle, self._rightPaddle :
+            if (time.time() > paddle.lastKnobMove+paddle.idleTimeout) :
+                if (paddle.paddlePos > self._ballY) :
+                    paddle.paddlePos -= dt*paddle.speed
+                if (paddle.paddlePos < self._ballY) :
+                    paddle.paddlePos += dt*paddle.speed
+
+            newKnobPos = paddle.knob.get_position()
+            if newKnobPos != paddle.knobPos :
+                paddle.paddlePos += .02*(newKnobPos - paddle.knobPos)
+                paddle.knobPos = newKnobPos
+                paddle.lastKnobMove = time.time()
+
+
+            paddle.paddlePos = max(paddle.paddlePos, paddle.paddleHeight/2)
+            paddle.paddlePos = min(paddle.paddlePos, 1-paddle.paddleHeight/2)
+
+        if (self.check_goal(self._leftPaddle)) :
+            self._state = self.GoalState
+            self._stateStartTime = time.time()
+            self._rightPaddle.score += 1
+            return           
+
+        if (self.check_goal(self._rightPaddle)) :
+            self._state = self.GoalState
+            self._stateStartTime = time.time()
+            self._leftPaddle.score += 1
+            return
+
+        if (self._ballX <= 0) :
+            self._ballDx = math.fabs(self._ballDx)
+        if (self._ballX >= 1) :
+            self._ballDx = -math.fabs(self._ballDx)
 
         if (self._ballY >= 1 or
             self._ballY <= 0) :
