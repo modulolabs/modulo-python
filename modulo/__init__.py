@@ -645,6 +645,7 @@ class Display(Module) :
         self._width = 96
         self._height = 64
         self._isRefreshing = False
+        self._textSize = 1
 
     def get_width(self) :
         "The width in pixels of the display"
@@ -656,18 +657,8 @@ class Display(Module) :
 
     def write(self, obj, color=1) :
         first = True
-        for line in str(obj).split("\n") :
-            w,h = self._drawContext.textsize(line)
-            x,y = self._cursor
-
-            if not first :
-                x = 0
-                y += h
-
-            self._drawContext.text((x,y), line, fill=color)
-
-            first = False
-            self._cursor = (x+w, y)
+        dataToSend = [self._OpDrawString] + list(str(obj)) + [0]
+        self.transfer(self._FUNCTION_APPEND_OP, dataToSend, 0)
 
     def writeln(self, obj, color=1) :
         self.write(str(obj) + "\n", color)
@@ -692,13 +683,14 @@ class Display(Module) :
         self._waitOnRefresh()
 
         sendData = [self._OpSetTextColor, color[0], color[1], color[2], color[3]]
-        self.transfer(self._FUNCTION_APPEND_OP, sendData, 5, 0, 0)
+        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
 
     def setTextSize(self, size):
         self._waitOnRefresh()
 
         sendData = [self._OpSetTextSize, size]
         self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
+        self._textSize = size
 
     def setCursor(self, x, y) :
         self._waitOnRefresh()
