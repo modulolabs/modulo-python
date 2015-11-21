@@ -23,14 +23,16 @@ class Port(object) :
     _BroadcastCommandGetAddress = 3
     _BroadcastCommandGetDeviceType = 4
     _BroadcastCommandGetVersion = 5
-    _BroadcastCommandGetManufacturer = 6
-    _BroadcastCommandGetProduct = 7
-    _BroadcastCommandGetDocURL = 8
-    _BroadcastCommandGetDocURLContinued = 9
-    _BroadcastCommandGetInterrupt = 10
-    _BroadcastCommandSetStatusLED = 11
+    _BroadcastCommandGetEvent = 6
+    _BroadcastCommandSetStatusLED = 7
+    _BroadcastCommandSetStatusLED = 8
+    _BroadcastCommandExitBootloader = 100
 
     class _SerialConnection(object) :
+        Delimeter = 0x7E
+        Escape = 0x7D
+
+
         def __init__(self, path=None, controller=0) :
             super(Port._SerialConnection, self).__init__()
 
@@ -41,7 +43,7 @@ class Port(object) :
                 # Modulo Controller will contain in the hardware description:
                 #    "16d0:a67" on OSX
                 #    "16D0:0A67" on Windows 71
-                for port in list_ports.grep("16d0:0?a67") :
+                for port in list_ports.grep("16d0:0?b58") :
                     if (controller == 0) :
                         path = port[0]
                         break
@@ -51,31 +53,66 @@ class Port(object) :
                 print(list_ports.comports())
                 raise IOError("Couldn't find a Modulo Controller connected via USB")
 
-            self._serial = serial.Serial(path, 9600, timeout=5)
+            self._serial = serial.Serial(path, timeout=.1)
             self._eventData = []
+
+            while not self.receivePacket() :
+                self.sendPacket([ord('X')])
+                pass
+
+        def sendPacket(self, data) :
+            self._serial.write(chr(self.Delimeter))
+            for x in data :
+                self._serial.write(chr(x))
+            self._serial.write(chr(self.Delimeter))
+            
+
+        def receivePacket(self) :
+            c = self._serial.read()
+            if (c == '') :
+                print 'Read error'
+                return None
+            while (c != chr(self.Delimeter) and c != '') :
+                print 'Skipping before delimeter: ', c
+                c = self._serial.read()
+
+            while (c == chr(self.Delimeter)) :
+                c = self._serial.read()
+
+            data = []
+            while (c != chr(self.Delimeter) and c != '') :
+                if (c == chr(self.Escape)) :
+                    c = self._serial.read() ^ (1 << 5)
+                data.append(c)
+                c = self._serial.read()
+
+            return data
 
         def transfer(self, address, command, sendData, receiveLen) :
             if address is None :
                 return None
 
-            sendBuffer = [ord('S'), address, command, len(sendData)] + sendData + [receiveLen]
+            sendBuffer = [ord('T'), address, command, len(sendData), receiveLen] + sendData
 
-            self._serial.write(bytearray(sendBuffer))
+            self.sendPacket(sendBuffer)
 
-            code = self._serial.read(1)
-            while (code == 'E') :
-                self._eventData.append(self._serial.read(5))
-                code = self._serial.read(1)
+            receiveData = self.receivePacket()
+            while (receiveData != None and receiveData[0] != 'R') :
+                self.processOutOfBandPacket(receiveData)
+                receiveData = self.receivePacket()
+
+            if receiveData is None :
+                return None
+
+            receiveData = [ord(x) for x in receiveData]
+            return receiveData[2:]
 
 
-            retval = ord(self._serial.read(1))
-            if retval and receiveLen > 0:
-                data = self._serial.read(receiveLen)
-                if isinstance(data, str) :
-                    return [ord(x) for x in data]
-                else :
-                    return data
-            return None
+        def processOutOfBandPacket(self, data) :
+            if (data[0] == 'D') :
+                print('Debug: ' + "".join(data[1:]))
+            else :
+                print('Out of band: ', data)
 
         def retrieveEventData(self) :
             if (self._serial.inWaiting()) :
@@ -89,53 +126,17 @@ class Port(object) :
 
 
         def close(self) :
-            self._serial.write('Q')
+            self.sendPacket([ord('Q')])
             self._serial.flush();
 
-
-    class _I2CConnection(object) :
-
-        def __init__(self, i2cPath) :
-            super(Port._I2CConnection, self).__init__()
-
-            self._i2cfd = os.open(i2cPath, os.O_RDWR)
-            if self._i2cfd < 0 :
-                raise StandardError('Unable to open the i2c device ' + path)
-
-            # This is the ctypes function for transferring data via i2c
-            self._dll = ctypes.cdll.LoadLibrary('libmodulo.so')
-            self.transferFunction = self._dll.modulotransfer
-
-        # Wrapper around the modulotransfer function from the dll
-        def transfer(self, address, command, sendData, receiveLen) :
-            if address is None :
-                return None
-
-            sendBuffer = ctypes.create_string_buffer(len(sendData))
-            for i in range(len(sendData)) :
-                sendBuffer[i] = chr(sendData[i])
-            receiveBuffer = ctypes.create_string_buffer(receiveLen)
-
-            if (self.transferFunction(self._fd, address, command, sendBuffer, len(sendData),
-                                   receiveBuffer, receiveLen) < 0) :
-                return None
-
-            return [ord(x) for x in receiveBuffer]
-
-
-
-
-    def __init__(self, serialPortPath=None, i2cPortPath=None) :
+    def __init__(self, serialPortPath=None) :
         self._portInitialized = False
         self._lastAssignedAddress = 9
+        self._connection = self._SerialConnection(serialPortPath)
+        self._modulos = []
 
-        if (i2cPortPath) :
-            self._connection = self._I2CConnection(i2cPortPath)
-        else :
-            self._connection = self._SerialConnection(serialPortPath)
-
-        import atexit
-        atexit.register(self._connection.close)
+        #import atexit
+        #atexit.register(self._connection.close)
 
     def _bytesToString(self, bytes) :
         s = ''
@@ -144,46 +145,62 @@ class Port(object) :
                 break
             s = s + chr(b)
         return s
-        
-    
+
+
+    def findModuloByID(self, id) :
+        for m in self._modulos :
+            if (m._deviceID == id) :
+                return m
+        return None
+
+    def loop() :
+        while True :
+            event = self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandGetEvent, [], 5)
+            if event is None :
+                break
+            self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandClearEvent, event, 0)
+
+            eventCode = event[0]
+            deviceID = event[1] | (event[2] << 8)
+            eventData = event[3] | (event[4] << 8)
+            
+            m = self.findModuloByID(deviceID)
+            if m :
+                m._processEvent(eventCode, eventData)
+
 
     # Reset all devices on the port
-    def _global_reset(self) :
+    def globalReset(self) :
         self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandGlobalReset, [], 0)
 
-    def _assign_address(self, requestedDeviceType, deviceID) :
-        # Ensure that a global reset has been performed
-        if not self._portInitialized :
-            self._portInitialized = True
-            self._global_reset()
+        for m in modulos :
+            m._reset()
 
-        # If no deviceID has been specified, find the first
-        # device with the specified type
-        if deviceID is None :
-            deviceID = self._get_next_device_id(0)
-            while deviceID is not None :
-                deviceType = self._get_device_type(deviceID)
-                if deviceType == requestedDeviceType :
-                    break
-                deviceID = self._get_next_device_id(deviceID+1)
+    def exitBootloader(self) :
+        self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandExitBootloader, [], 0)
 
-        # No device found. We can't assign an address
-        if deviceID is None :
+    # Returns the device ID of the device on the port with the
+    # next greater ID than the one provided.
+    def getNextDeviceID(self, lastDeviceID) :
+        if lastDeviceID == 0xFFFF :
+            return 0xFFFF
+        
+        nextDeviceID = lastDeviceID+1
+
+        sendData = [nextDeviceID & 0xFF, nextDeviceID >> 8]
+        resultData = self._connection.transfer(
+            self._BroadcastAddress, self._BroadcastCommandGetNextDeviceID, sendData, 2)
+        if resultData is None or len(resultData) < 2:
             return None
-
-        self._lastAssignedAddress += 1
-        address = self._lastAssignedAddress
-
-        self._set_address(deviceID, address)
-        return address
+        return resultData[1] | (resultData[0] << 8)
 
 
-    def _set_address(self, deviceID, address) :
+    def setAddress(self, deviceID, address) :
         sendData = [deviceID & 0xFF, deviceID >> 8, address]
         self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandSetAddress,
             sendData, 0)
     
-    def _get_address(self, deviceID) :
+    def getAddress(self, deviceID) :
         sendData = [deviceID & 0xFF, deviceID >> 8]
         retval = self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandGetAddress,
             sendData, 1)
@@ -191,34 +208,12 @@ class Port(object) :
             return None
         return retval[0]
 
-    def _get_manufacturer(self, deviceID) :
-        sendData = [deviceID & 0xFF, deviceID >> 8]
-        resultData = self._connection.transfer(
-            self._BroadcastAddress, self._BroadcastCommandGetManufacturer, sendData, 31)
-        return self._bytesToString(resultData)
-        
-    def _get_product(self, deviceID) :
-        sendData = [deviceID & 0xFF, deviceID >> 8]
-        resultData = self._connection.transfer(
-            self._BroadcastAddress, self._BroadcastCommandGetProduct, sendData, 31)
-        return self._bytesToString(resultData)
-
-    def _set_status(self, deviceID, status) :
+    def setStatus(self, deviceID, status) :
         sendData = [deviceID & 0xFF, deviceID >> 8, status]
         resultData = self._connection.transfer(
             self._BroadcastAddress, self._BroadcastCommandSetStatusLED, sendData, 0)
 
-    # Returns the device ID of the device on the port with the
-    # next greater ID than the one provided.
-    def _get_next_device_id(self, lastDeviceID) :
-        sendData = [lastDeviceID & 0xFF, lastDeviceID >> 8]
-        resultData = self._connection.transfer(
-            self._BroadcastAddress, self._BroadcastCommandGetNextDeviceID, sendData, 2)
-        if resultData is None :
-            return None
-        return resultData[1] | (resultData[0] << 8)
-    
-    def _get_version(self, deviceID) :
+    def getVersion(self, deviceID) :
         sendData = [deviceID & 0xFF, deviceID >> 8]
         retval = self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandGetVersion,
             sendData, 2)
@@ -226,11 +221,40 @@ class Port(object) :
             return None
         return retval[0] | (retval[1] << 8)
 
-    def _get_device_type(self, deviceID) :
+    def getDeviceType(self, deviceID) :
         sendData = [deviceID & 0xFF, deviceID >> 8]
         resultData = self._connection.transfer(
             self._BroadcastAddress, self._BroadcastCommandGetDeviceType, sendData, 31)
         return self._bytesToString(resultData)
+
+    # def _assign_address(self, requestedDeviceType, deviceID) :
+    #     # Ensure that a global reset has been performed
+    #     if not self._portInitialized :
+    #         self._portInitialized = True
+    #         self._global_reset()
+
+    #     # If no deviceID has been specified, find the first
+    #     # device with the specified type
+    #     if deviceID is None :
+    #         deviceID = self._get_next_device_id(0)
+    #         while deviceID is not None :
+    #             deviceType = self._get_device_type(deviceID)
+    #             if deviceType == requestedDeviceType :
+    #                 break
+    #             deviceID = self._get_next_device_id(deviceID+1)
+
+    #     # No device found. We can't assign an address
+    #     if deviceID is None :
+    #         return None
+
+    #     self._lastAssignedAddress += 1
+    #     address = self._lastAssignedAddress
+
+    #     self._set_address(deviceID, address)
+    #     return address
+
+
+
         
 class Module(object) :
     """
@@ -241,41 +265,73 @@ class Module(object) :
     def __init__(self, port, deviceType, deviceID) :
         if port is None :
             raise ValueError("Cannot create a Module with an invalid port")
-
         self._port = port
         self._deviceType = deviceType
         self._deviceID = deviceID
         self._address = None
+        
+        self._port._modulos.append(self)
+
+    def __del__(self) :
+        self.close()
+
+    def close(self) :
+        if (self._port) :
+            self._port._modulos.remove(self)
+            
 
     def transfer(self, command, sendData, receiveLen) :
-        return self._port._connection.transfer(self.get_address(), command, sendData, receiveLen)
+        return self._port._connection.transfer(self.getAddress(), command, sendData, receiveLen)
 
-    def get_address(self) :
-        """
-        Returns the module's i2c address.
-        
-        A module's address is an 8 bit number used to identify the device on the i2c bus.
-        The address will be assigned automatically when the device is first accessed
-        after power up or after a global reset.
-        
-        Normally you do not need to know a Module's address or do anything with it directly
-        """
-        
-        if self._address is None :
-            self._address = self._port._assign_address(self._deviceType, self._deviceID)
+    def _reset(self) :
+        self._address = None
 
+    def _processEvent(self, eventCode, eventData) :
+        pass
+
+    def getDeviceID(self) :
+        self._init()
+        return self._deviceID
+    
+    def setDeviceID(self, deviceID) :
+        if (deviceID != self._deviceID) :
+            self._deviceID = deviceID
+            self._address = None
+
+    def getAddress(self) :
+        self._init()
         return self._address
 
-    def get_device_id(self) :
-        """
-        Returns the module's device ID.
+    def _loop(self) :
+        if self._disconnected :
+            if self.getAddress() != None :
+                self._disconnected = False
+    
+    def _init(self) :
+        if self._address is not None :
+            return False
 
-        A module's device ID is a 16 bit number that is programmed into the device by
-        the manufacturer. It never changes and therefore can be reliably used to distingush
-        one module from another, even if they are the same type of module
-        """
+        if self._deviceID is None:
+            deviceID = self._port.getNextDeviceID(0)
+            while (deviceID is not None) :
+                m = self._port.findModuloByID(deviceID)
+                
+                if m is None :
+                    if (self._port.getDeviceType(deviceID) == self._deviceType) :
+                        self._deviceID = deviceID
+                        break
+        
+        if self._deviceID is None :
+            return False
 
-        return self._deviceID
+        self._address = self._port.getAddress(self._deviceID)
+        if (self._address == 0) :
+            self._port._lastAssignedAddress += 1
+            self._address = self._port._lastAssignedAddress
+            self._port.setAddress(self._deviceID, self._address)
+
+        return True
+
 
 class Knob(Module) :
     """
@@ -364,47 +420,6 @@ class Joystick(Module):
         return self._vPos*2.0/255.0 - 1;
 
 
-
-
-class DPad(Module) :
-    """
-    Connect to the module with the specified *deviceID* on the given *port*.
-    If *deviceID* isn't specified, finds the first unused DPadModule.
-    """
-
-    _FunctionGetButtons = 0
-
-    RIGHT = 0
-    UP = 1
-    LEFT = 2
-    DOWN = 3
-    CENTER = 4
-
-    class Buttons(object) :
-        def __init__(self, values = 0) :
-            self.values = values
-            self.right = values & 0b00001
-            self.up = values & 0b00010
-            self.left = values & 0b00100
-            self.down = values & 0b01000
-            self.center = values & 0b10000
-
-    def __init__(self, port, deviceID = None) :
-        super(DPad, self).__init__(port, "co.modulo.dpad", deviceID)    
-
-    def _get_buttons(self) :
-        receivedData = self.transfer(self._FunctionGetButtons, [], 1)
-        if receivedData is None :
-            return 0
-        return receivedData[0]
-    
-    def get_button(self, button) :
-        """Return whether the specified button is currently being pressed"""
-        return bool(self._get_buttons() & (1 << button))
-
-    def get_buttons(self) :
-        """Return a byte with the state of each button in a different bit"""
-        return self.Buttons(self._get_buttons())
 
 class Motor(Module) :
 
