@@ -13,7 +13,18 @@ print port.getDeviceType(id)
 
 knob = modulo.Knob(port)
 
-knob.set_color(0,1,1)
+import random
+#knob.setColor(random.random(),random.random(),random.random())
+
+knob.setHSV(random.random(),random.random(),random.random())
+
+def positionChanged(k) :
+    k.setHSV(k.getAngle()/360.0, 1.0, 1.0)
+
+knob.positionChangeCallback = positionChanged
+
+while True :    
+    port.loop()
 
 
 # # Open the first Modulo Controller serial port

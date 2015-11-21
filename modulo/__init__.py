@@ -24,14 +24,14 @@ class Port(object) :
     _BroadcastCommandGetDeviceType = 4
     _BroadcastCommandGetVersion = 5
     _BroadcastCommandGetEvent = 6
-    _BroadcastCommandSetStatusLED = 7
+    _BroadcastCommandClearEvent = 7
     _BroadcastCommandSetStatusLED = 8
+
     _BroadcastCommandExitBootloader = 100
 
     class _SerialConnection(object) :
         Delimeter = 0x7E
         Escape = 0x7D
-
 
         def __init__(self, path=None, controller=0) :
             super(Port._SerialConnection, self).__init__()
@@ -63,7 +63,11 @@ class Port(object) :
         def sendPacket(self, data) :
             self._serial.write(chr(self.Delimeter))
             for x in data :
-                self._serial.write(chr(x))
+                if x == self.Delimeter or x == self.Escape :
+                    self._serial.write(chr(self.Escape))
+                    self._serial.write(chr(x ^ (1 << 5)))
+                else :
+                    self._serial.write(chr(x))
             self._serial.write(chr(self.Delimeter))
             
 
@@ -82,7 +86,7 @@ class Port(object) :
             data = []
             while (c != chr(self.Delimeter) and c != '') :
                 if (c == chr(self.Escape)) :
-                    c = self._serial.read() ^ (1 << 5)
+                    c = chr(ord(self._serial.read()) ^ (1 << 5))
                 data.append(c)
                 c = self._serial.read()
 
@@ -153,21 +157,26 @@ class Port(object) :
                 return m
         return None
 
-    def loop() :
+    def loop(self) :
+        gotEvent = False
         while True :
             event = self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandGetEvent, [], 5)
-            if event is None :
+            if event is None or len(event) == 0:
                 break
             self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandClearEvent, event, 0)
 
+        
             eventCode = event[0]
             deviceID = event[1] | (event[2] << 8)
             eventData = event[3] | (event[4] << 8)
             
             m = self.findModuloByID(deviceID)
             if m :
+                print event
+                gotEvent = True
                 m._processEvent(eventCode, eventData)
 
+        return gotEvent
 
     # Reset all devices on the port
     def globalReset(self) :
@@ -344,38 +353,77 @@ class Knob(Module) :
     _FunctionAddOffsetPosition = 2
     _FunctionSetColor = 3
 
+    _EventButtonChanged = 0
+    _EventPositionChanged = 1
+
     def __init__(self, port, deviceID = None) :
         super(Knob, self).__init__(port, "co.modulo.knob", deviceID)
 
-    def set_color(self, red, green, blue) :
+        self._buttonState = False
+        self._position = 0
+        self.buttonPressCallback = None
+        self.buttonReleaseCallback = None
+        self.positionChangeCallback = None
+
+    def setColor(self, red, green, blue) :
         """Set the color of the knob's LED. *red*, *green*, and *blue* should be
         between 0 and 1"""
         sendData = [int(red*255), int(green*255), int(blue*255)]
         self.transfer(self._FunctionSetColor, sendData, 0)
 
-    def set_hsv(self, h, s, v) :
+    def setHSV(self, h, s, v) :
         import colorsys
         r,g,b = colorsys.hsv_to_rgb(h,s,v)
-        return self.set_color(r,g,b)
+        return self.setColor(r,g,b)
 
-
-    def get_button(self) :
+    def getButton(self) :
         """Return whether the knob is currently being pressed"""
-        receivedData = self.transfer(self._FunctionGetButton, [], 1)
-        if receivedData is None :
-            return False
-        return bool(receivedData[0])
+        return self._buttonState
 
-    def get_position(self) :
-        """Return the position of the knob in steps. There are 24 steps per revolution"""
+    def getAngle(self) :
+        return (self.getPosition() % 24)*360/24.0
+
+    def getPosition(self) :
+        return self._position
+
+    def _init(self) :
+        if super(Knob, self)._init() :
+            self._refreshState()
+            return True
+        return False
+
+    def _refreshState(self) :
         receivedData = self.transfer(self._FunctionGetPosition, [], 2)
-        if receivedData is None :
-            return 0
-        return ctypes.c_short(receivedData[0] | (receivedData[1] << 8)).value
+        if receivedData is not None :
+            self._position = ctypes.c_short(receivedData[0] | (receivedData[1] << 8)).value
+        
+        receivedData = self.transfer(self._FunctionGetButton, [], 1)
+        if receivedData is not None :
+            self._button = bool(receivedData[0])
 
-    def get_angle(self) :
-        """Return the knob's angle in degrees"""
-        return self.get_position()*360/24
+    def _processEvent(self, eventCode, eventData) :
+        if eventCode == self._EventButtonChanged :
+            buttonPressed = bool(eventData & 0x0100)
+            buttonReleased = bool(eventData & 0x0001);
+
+            self._buttonState = self._buttonState or buttonPressed
+            self._buttonState = self._buttonState and not buttonReleased
+
+            if buttonPressed and self.buttonPressCallback :
+                self._buttonPressCallback(self)
+
+            if buttonReleased and self.buttonReleaseCallback :
+                self.buttonReleaseCallback(self)
+        
+        if eventCode == self._EventPositionChanged :
+            # Convert from 16 bit unsigned to 16 bit signed
+            self._position = ctypes.c_short(eventData).value
+            print self._position
+            if self.positionChangeCallback :
+                self.positionChangeCallback(self)
+
+
+
 
 
 class Joystick(Module):
