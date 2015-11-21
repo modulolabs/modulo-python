@@ -74,7 +74,6 @@ class Port(object) :
         def receivePacket(self) :
             c = self._serial.read()
             if (c == '') :
-                print 'Read error'
                 return None
             while (c != chr(self.Delimeter) and c != '') :
                 print 'Skipping before delimeter: ', c
@@ -91,6 +90,9 @@ class Port(object) :
                 c = self._serial.read()
 
             return data
+
+        def inWaiting(self) :
+            return self._serial.inWaiting()
 
         def transfer(self, address, command, sendData, receiveLen) :
             if address is None :
@@ -157,26 +159,41 @@ class Port(object) :
                 return m
         return None
 
-    def loop(self) :
-        gotEvent = False
+    def runForever(self) :
         while True :
-            event = self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandGetEvent, [], 5)
-            if event is None or len(event) == 0:
-                break
-            self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandClearEvent, event, 0)
+            self.loop()
 
+    def loop(self, noWait=False) :
+        if noWait :
+            if self._connection.inWaiting() == 0:
+                return
+
+        receiveData = self._connection.receivePacket()
+        if (receiveData == None) :
+            return False
+        if (receiveData[0] != 'V') :
+            self.processOutOfBandPacket(receiveData)
+            return False
+
+
+        event = [ord(x) for x in receiveData[1:]]
+        #event = self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandGetEvent, [], 5)
+        #if event is None or len(event) == 0:
+    #        break
+        #self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandClearEvent, event, 0)
+
+    
+        eventCode = event[0]
+        deviceID = event[1] | (event[2] << 8)
+        eventData = event[3] | (event[4] << 8)
         
-            eventCode = event[0]
-            deviceID = event[1] | (event[2] << 8)
-            eventData = event[3] | (event[4] << 8)
-            
-            m = self.findModuloByID(deviceID)
-            if m :
-                print event
-                gotEvent = True
-                m._processEvent(eventCode, eventData)
+        m = self.findModuloByID(deviceID)
+        if m :
+            print event
+            gotEvent = True
+            m._processEvent(eventCode, eventData)
 
-        return gotEvent
+        return True
 
     # Reset all devices on the port
     def globalReset(self) :
@@ -235,34 +252,6 @@ class Port(object) :
         resultData = self._connection.transfer(
             self._BroadcastAddress, self._BroadcastCommandGetDeviceType, sendData, 31)
         return self._bytesToString(resultData)
-
-    # def _assign_address(self, requestedDeviceType, deviceID) :
-    #     # Ensure that a global reset has been performed
-    #     if not self._portInitialized :
-    #         self._portInitialized = True
-    #         self._global_reset()
-
-    #     # If no deviceID has been specified, find the first
-    #     # device with the specified type
-    #     if deviceID is None :
-    #         deviceID = self._get_next_device_id(0)
-    #         while deviceID is not None :
-    #             deviceType = self._get_device_type(deviceID)
-    #             if deviceType == requestedDeviceType :
-    #                 break
-    #             deviceID = self._get_next_device_id(deviceID+1)
-
-    #     # No device found. We can't assign an address
-    #     if deviceID is None :
-    #         return None
-
-    #     self._lastAssignedAddress += 1
-    #     address = self._lastAssignedAddress
-
-    #     self._set_address(deviceID, address)
-    #     return address
-
-
 
         
 class Module(object) :

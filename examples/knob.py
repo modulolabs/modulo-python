@@ -23,8 +23,8 @@ def positionChanged(k) :
 
 knob.positionChangeCallback = positionChanged
 
-while True :    
-    port.loop()
+port.runForever()
+
 
 
 # # Open the first Modulo Controller serial port
