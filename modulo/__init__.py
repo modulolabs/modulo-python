@@ -4,7 +4,7 @@
 Modulo Docstring
 """
 
-import os, math
+import os, math, numpy
 import ctypes, ctypes.util, serial
 
 
@@ -19,13 +19,14 @@ class Port(object) :
 
     _BroadcastCommandGlobalReset = 0
     _BroadcastCommandGetNextDeviceID = 1
-    _BroadcastCommandSetAddress = 2
-    _BroadcastCommandGetAddress = 3
-    _BroadcastCommandGetDeviceType = 4
-    _BroadcastCommandGetVersion = 5
-    _BroadcastCommandGetEvent = 6
-    _BroadcastCommandClearEvent = 7
-    _BroadcastCommandSetStatusLED = 8
+    _BroadcastCommandGetNextUnassignedDeviceID = 2
+    _BroadcastCommandSetAddress = 3
+    _BroadcastCommandGetAddress = 4
+    _BroadcastCommandGetDeviceType = 5
+    _BroadcastCommandGetVersion = 6
+    _BroadcastCommandGetEvent = 7
+    _BroadcastCommandClearEvent = 8
+    _BroadcastCommandSetStatusLED = 9
 
     _BroadcastCommandExitBootloader = 100
 
@@ -141,8 +142,8 @@ class Port(object) :
         self._connection = self._SerialConnection(serialPortPath)
         self._modulos = []
 
-        #import atexit
-        #atexit.register(self._connection.close)
+        import atexit
+        atexit.register(self._connection.close)
 
     def _bytesToString(self, bytes) :
         s = ''
@@ -174,7 +175,6 @@ class Port(object) :
         if (receiveData[0] != 'V') :
             self.processOutOfBandPacket(receiveData)
             return False
-
 
         event = [ord(x) for x in receiveData[1:]]
         #event = self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandGetEvent, [], 5)
@@ -318,6 +318,8 @@ class Module(object) :
                     if (self._port.getDeviceType(deviceID) == self._deviceType) :
                         self._deviceID = deviceID
                         break
+
+                deviceID = self._port.getNextDeviceID(deviceID)
         
         if self._deviceID is None :
             return False
@@ -357,6 +359,7 @@ class Knob(Module) :
     def setColor(self, red, green, blue) :
         """Set the color of the knob's LED. *red*, *green*, and *blue* should be
         between 0 and 1"""
+        
         sendData = [int(red*255), int(green*255), int(blue*255)]
         self.transfer(self._FunctionSetColor, sendData, 0)
 
@@ -412,9 +415,6 @@ class Knob(Module) :
                 self.positionChangeCallback(self)
 
 
-
-
-
 class Joystick(Module):
     """
     Connect to the module with the specified *deviceID* on the given *port*.
@@ -433,190 +433,280 @@ class Joystick(Module):
         self._buttonState = 0
         self._hPos = 128
         self._vPos = 128
-        self._buttonPressCallback = None
-        self._buttonReleaseCallback = None
-        self._positionChangeCallback = None
+        self.buttonPressCallback = None
+        self.buttonReleaseCallback = None
+        self.positionChangeCallback = None
 
-    def _refreshState(self) :
-        self._buttonState = self.transfer(self.FUNCTION_GET_BUTTON, [], 1)[0]
-
-        self._hPos, self._vPos = self.transfer(self.FUNCTION_GET_POSITION, [], 2)
-        
     def getButton(self) :
-        self._refreshState()
+        self._init()
         return self._buttonState
 
     def getHPos(self) :
-        self._refreshState()
+        self._init()
 
-        return self._hPos*2.0/255.0 - 1;
+        return 1 - self._hPos*2.0/255.0
 
     def getVPos(self) :
-        self._refreshState()
+        self._init()
 
-        return self._vPos*2.0/255.0 - 1;
+        return 1 - self._vPos*2.0/255.0
 
+    def _init(self) :
+        if super(Joystick, self)._init() :
+            self._refreshState()
+            return True
+        return False
+
+    def _refreshState(self) :
+        received = self.transfer(self.FUNCTION_GET_BUTTON, [], 1)
+        if received is not None :
+            self._buttonState = received[0]
+
+        received = self.transfer(self.FUNCTION_GET_POSITION, [], 2)
+        # XXX: This may not be working
+        if received is not None and len(received) == 2 :
+            self._hPos = received[0]
+            self._vPos = received[1]
+
+    def _processEvent(self, eventCode, eventData) :
+        if eventCode == self.EVENT_BUTTON_CHANGED :
+            buttonPressed = (eventData >> 8)
+            buttonReleased = (eventData & 0xFF)
+
+            self._buttonState = self._buttonState or buttonPressed
+            self._buttonState = self._buttonState and not buttonReleased
+
+            if self.buttonPressCallback :
+                self.buttonPressCallback(self)
+
+            if self.buttonReleaseCallback :
+                self.buttonReleaseCallback(self)
+        
+        if eventCode == self.EVENT_POSITION_CHANGED :
+            self._hPos = (eventData >> 8)
+            self._vPos = (eventData & 0xFF)
+            
+            if self.positionChangeCallback :
+                self.positionChangeCallback(self)
+
+def TemperatureProbe(Module) :
+
+    _FunctionGetTemperature = 0
+
+    def __init__(self, port, deviceID = None) :
+        super(TemperatureProbe, self).__init__(port, "co.modulo.tempprobe", deviceID)
+
+    def getTemperatureC(self) :
+        received = self.transfer(self._FunctionGetTemperature, [], 2)
+        if received is None :
+            return None
+
+        t = ctypes.c_short(received[0] | (received[1] << 8)).value
+        return t/10.0
+
+    def getTemperatureF(self) :
+        t = self.getTemperatureC()
+        if t is None :
+            return None
+
+        return t*1.8 + 32
+
+def BlankSlate(Module) :
+    _FUNCTION_GET_DIGITAL_INPUT = 0
+    _FUNCTION_GET_DIGITAL_INPUTS = 1
+    _FUNCTION_GET_ANALOG_INPUT = 2
+    _FUNCTION_SET_DATA_DIRECTION = 3
+    _FUNCTION_SET_DATA_DIRECTIONS = 4
+    _FUNCTION_SET_DIGITAL_OUTPUT = 5
+    _FUNCTION_SET_DIGITAL_OUTPUTS = 6
+    _FUNCTION_SET_PWM_OUTPUT = 7
+    _FUNCTION_SET_PULLUP = 8
+    _FUNCTION_SET_PULLUPS = 9
+    _FUNCTION_SET_PWM_FREQUENCY = 10
+
+    def __init__(self, port, deviceID = None) :
+        super(BlankSlate, self).__init__(port, "co.modulo.io", deviceID)
+
+    def getDigitalInput(self, pin) :
+        result = self.transfer(self._FUNCTION_GET_DIGITAL_INPUT, [pin], 1)
+        if result is not None :
+            return result[0]
+    
+    def getDigitalInputs(self) :
+        result = self.transfer(self._FUNCTION_GET_DIGITAL_INPUTS, [], 1)
+        if result is not None :
+            return result[0]
+    
+    def getAnalogInput(self, pin) :
+        result = self.transfer(self._FUNCTION_GET_ANALOG_INPUT, [pin], 2)
+        if result is not None :
+            return (result[0] | (result[1] << 8))/1023.0
+    
+    def setDirection(self, pin, output) :
+        self.transfer(self._FUNCTION_SET_DATA_DIRECTION, [pin, output], 0)
+    
+    def setDirections(self, outputs) :
+        self.transfer(self._FUNCTION_SET_DATA_DIRECTIONS, [outputs], 0)
+
+    def setDigitialOutput(self, pin, value) :
+        self.transfer(self._FUNCTION_SET_DIGITAL_OUTPUTS, [pin, value], 0)
+
+    def setDigitalOutputs(self, values) :
+        self.transfer(self._FUNCTION_SET_DATA_DIRECTIONS, [values], 0)
+
+    def setPWMValue(self, pin, value) :
+        if value >= 1 :
+            return self.setDigitalOutput(pin, 1.0)
+        if value <= 0 :
+            return self.setDigitalOutput(pin, 0.0)
+
+        v = 65535*value
+        sendData = [pin, v & 0xFF, v >> 8]
+    
+        self.transfer(self._FUNCTION_SET_PWM_OUTPUT, sendData, 0)
+
+    def setPullup(self, pin, enable) :
+        self.transfer(self._FUNCTION_SET_PULLUP, [pin, enable], 0)
+
+    def setPullups(self, values) :
+        self.transfer(self._FUNCTION_SET_PULLUPS, [values], 0)
+
+    def setPWMFrequency(self, pin, value) :
+        sendData = [pin, value & 0xFF, value >> 8]
+    
+        self.transfer(self._FUNCTION_SET_PWM_FREQUENCY, sendData, 0)
 
 
 class Motor(Module) :
 
-    _FunctionSetValue = 0
-    _FunctionGetCurrent = 1
-    _FunctionSetEnabled = 2
-    _FunctionSetFrequency = 3
+    ModeDisabled = 0
+    ModeDC = 1
+    ModeStepper = 2
+
+    _FunctionSetValue = 0;
+    _FunctionSetEnabled = 1;
+    _FunctionSetFrequency = 2;
+    _FunctionSetCurrentLimit = 3;
+    _FunctionSetStepperSpeed = 4;
+    _FunctionGetStepperPosition = 5;
+    _FunctionSetStepperTarget = 6;
+    _FunctionAddStepperOffset = 7;
+
+    _EventPositionReached = 0;
+    _EventFaultChanged = 1;
 
     def __init__(self, port, deviceID = None) :
-         super(Motor, self).__init__(port, "co.modulo.motor", deviceID)    
+        super(BlankSlate, self).__init__(port, "co.modulo.motor", deviceID)
+    
+        self.positionReachedCallback = None
+        self.faultChangedCallback = None
+        
+        self._fault = False
+        self._stepperOffset = 0
+        self._usPerStep = 5000
+        self._microsteps = 256
+        self._minMicrostepDuration = 1000
+        
+    
+    def setChannel(self, channel, amount) :
+        intValue = numpy.clip(amount, 0, 1)*0xFFFF
+        data = [channel, intValue & 0xFF, intValue >> 8]
+        self.transfer(self._FunctionSetValue, data, 0)
 
-    def enable_a(self, enabled=True) :
-        "Enable the outputs for motor A (channels 0 and 1)"
-        # Channels are enabled in pairs, so enabling 0 also enables 1
-        self.transfer(self._FunctionSetEnabled, [0, enabled], 0)
-
-    def enable_b(self, enabled=True) :
-        "Enable the outputs for motor B (channels 2 and 3)"
-        # Channels are enabled in pairs, so enabling 2 also enables 3
-        self.transfer(self._FunctionSetEnabled, [2, enabled], 0)
-
-    def set_channel(self, channel, value) :
-        """
-        Set the value (between 0 and 1) of the specified channel (0, 1, 2 or 3)."
-        The outputs must also be enabled by calling enable_a() or enable_b()
-        """
-        intValue = int(min(1, max(0, value))*0xFFFF)
-        dataToSend = [channel, intValue >> 8, intValue & 0xFF]
-        self.transfer(self._FunctionSetValue, dataToSend, 0)
-
-    def set_speed_a(self, value) :
-        "Set the speed of Motor A (channels 0 and 1)"
-        "The speed must be between -1 and 1"
-        if (value > 0) :
-            self.set_channel(0, value)
-            self.set_channel(1, 0)
+    def setMotorA(self, amount) :
+        if amount > 0 :
+            self.setChannel(0, 1)
+            self.setChannel(1, 1-value)
         else :
-            self.set_channel(0, 0)
-            self.set_channel(1, -value)
+            self.setChanenl(0, 1+value)
+            self.setChannel(1, 1)
 
-    def set_speed_b(self, value) :
-        "Set the speed of Motor B (channels 2 and 3)"
-        "The speed must be between -1 and 1"
-        if (value > 0) :
-            self.set_channel(2, value)
-            self.set_channel(3, 0)
+    def setMotorB(self, amount) :
+        if amount > 0 :
+            self.setChannel(2, 1)
+            self.setChannel(3, 1-value)
         else :
-            self.set_channel(2, 0)
-            self.set_channel(3, -value)
-
-class Thermocouple(Module) :
-    """
-    Connect to the module with the specified *deviceID* on the given *port*.
-    If *deviceID* isn't specified, finds the first unused ThermocoupleModule.
-    """
-
-    _FunctionGetTemperature = 0
-
-    InvalidTemperature = -1000
-
-    def __init__(self, port, deviceID = None) :
-        super(Thermocouple, self).__init__(port, "co.modulo.thermocouple", deviceID)
+            self.setChanenl(2, 1+value)
+            self.setChannel(3, 1)
 
 
-    def get_celsius(self) :
-        """
-        Return the thermocouple temperature in celsius.
-        Returns None if no probe is connected
-        """
+    def setMode(self, mode) :
+        self.transfer(self._FunctionSetEnabled, [mode], 0)
 
-        receivedData = self.transfer(self._FunctionGetTemperature, [], 2)
-        if (receivedData is None) :
-            return None
-        tenths = ctypes.c_short(receivedData[0] | (receivedData[1] << 8)).value
-        if (tenths == -10000) : # Check for the invalid temperature sentinal
-            return None
-        return tenths/10.0
+    def setCurrentLimit(self, limit) :
+        data = [numpy.clip(limit, 0, 1)*63]
+        self.transfer(self.FunctionSetCurrrentLimit, data, 0)
 
-    def get_fahrenheit(self) :
-        """
-        Return the thermocouple temperature in celsius.
-        Returns None if no probe is connected
-        """
-        tempC = self.get_celsius()
-        if (tempC is None) :
-            return None
-        return tempC*1.8 + 32
+    def setPWMFrequency(self, freq) :
+        data = [frequency * 0xFF, frequency >> 8]
+        self.transfer(self.FunctionSetPWMFrequency, data, 0)
 
-class Clock(Module) :
-    """
-    Connect to the module with the specified *deviceID* on the given *port*.
-    If *deviceID* isn't specified, finds the first unused ClockModule.
-    """
+    def setStepperSpeed(self, stepsPerSecond) :
+        self._setStepperRate(1e6/stepsPerSecond)
 
-    _FunctionGetTime = 0
-    _FunctionSetTime = 1
-    _FunctionGetTemperature = 2
+    def setStepperRate(self, usPerStep) :
+        self._usPerStep = usPerStep
+        self._updateStepperSpeed()
 
-    def __init__(self, port, deviceID = None) :
-        super(Clock, self).__init__(port, "co.modulo.clock", deviceID)
+    def setStepperResolution(self, microsteps, minMicrostepDuration=1000) :
+        self._microsteps = microsteps
+        self._minMicrostepDuration = minMicrostepDuration
+        self._updateStepperSpeed()
 
-    def get_datetime(self) :
-        """
-        Return a datetime object representing the date and time stored
-        in the clock module
-        """
-        receivedData = self.transfer(self._FunctionGetTime, [], 9)
-        if (receivedData is None) :
-            return None
+    def setStepperTarget(self, targetPos) :
+        data = [targetPos & 0xFF,
+                (targetPos >> 8) & 0xFF,
+                (targetPos >> 16) & 0xFF,
+                (targetPos >> 24) & 0xFF]            
 
-        if not receivedData[7] : # Check the isSet bit
-            return None
+        self.transfer(self._FunctionSetStepperTarget, data, 0)
 
-        import datetime
-        return datetime.datetime(
-            receivedData[6] + 2000, # year
-            receivedData[5], # month
-            receivedData[3], # day
-            receivedData[2], # hour
-            receivedData[1], # minute
-            receivedData[0]) # second
+    def getStepperPosition(self) :
+        receiveData = self.transfer(self._FunctionGetStepperPosition, [], 4)
+        pos = 0
+        if receiveData is not None :
+            for i in [3,2,1,0] :
+                pos = (pos << 8)
+                pos = pos | receiveData[i]
+        return pos
 
-    def set_datetime(self, t = None) :
-        """
-        Set the module's date and time using the provided datetime, or the current
-        date and time if *t* is None
-        """
+    def hasFault(self) :
+        return self._fault
 
-        if t is None :
-            import datetime
-            t = datetime.datetime.now()
+    def _updateStepperSpeed(self) :
+        microsteps = self._microsteps
 
-        sendData = [
-            t.second,
-            t.minute,
-            t.hour,
-            t.day,
-            t.weekday(),
-            t.month,
-            t.year-2000]
-        self.transfer(self._FunctionSetTime, sendData, 0)
+        if microsteps > 256 :
+            microsteps = 256
 
+        while (microsteps > 1 and self._usPerStep/microsteps < self._minMicrostepDuration) :
+            microsteps /= 2
 
-    def is_set(self) :
-        """
-        Return whether the date and time have been set since the last battery failure
-        """
-        receivedData = self.transfer(self._FunctionGetTime, [], 9)
-        if (receivedData is None) :
-            return False
-        return bool(receivedData[7])
+        resolution = 0
+        i = microsteps/2
+        while i > 0 and resolution <= 8 :
+            resolution += 1
+            i /= 2
 
-    def is_battery_low(self) :
-        """
-        Return whether the battery is low
-        """
-        receivedData = self.transfer(self._FunctionGetTime, [], 9)
-        if (receivedData is None) :
-            return False
-        return bool(receivedData[8])
+        ticksPerMicrostep = numpy.clip(self._usPerStep, 0, 65535)
+
+        sendData = [ticksPerMicrostep & 0xFF, ticksPerMicrostep >> 8, resolution]
+        self._transfer(self._FunctionSetStepperSpeed, sendData)
+
+    def _processEvent(self, eventCode, eventData) :
+        if eventCode == self._EventPositionReached :
+            if self.positionReachedCallback :
+                self.positionReachedCallback(self)
+
+        if eventCode == self._EventFaultChanged :
+            if eventData & 1 :
+                self._fault = True
+            if eventData & 2 :
+                self._fault = False
+            if self.faultChangedCallback :
+                self.faultChanedCallback(self)
+    
+
 
 
 class Controller(Module) :

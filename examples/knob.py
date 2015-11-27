@@ -2,29 +2,44 @@
 
 import modulo, math
 
-port = modulo.Port()
-
-#id = port.getNextDeviceID(0)
-id = 51269
-
-print "ID: ", id
-print port.getDeviceType(id)
-#print port.setStatus(id, 2)
-
-knob = modulo.Knob(port)
 
 import random
 #knob.setColor(random.random(),random.random(),random.random())
 
-knob.setHSV(random.random(),random.random(),random.random())
+def knobTest() :
+    port = modulo.Port()
+    knob = modulo.Knob(port)
+    knob.setHSV(random.random(),random.random(),random.random())
 
-def positionChanged(k) :
-    k.setHSV(k.getAngle()/360.0, 1.0, 1.0)
+    def positionChanged(k) :
+        k.setHSV(k.getAngle()/360.0, 1.0, 1.0)
 
-knob.positionChangeCallback = positionChanged
+    knob.positionChangeCallback = positionChanged
 
-port.runForever()
+    port.runForever()
 
+def joystickTest() :
+    port = modulo.Port()
+    joystick = modulo.Joystick(port)
+
+    def positionChanged(j) :
+        print j.getHPos(), j.getVPos(), j.getButton()
+
+    def buttonPressed(j) :
+        print 'press'
+
+    def buttonReleased(j) :
+        print 'release'
+
+    joystick.buttonPressCallback = buttonPressed
+    joystick.buttonReleaseCallback = buttonReleased
+    joystick.positionChangeCallback = positionChanged
+    print "address: ", joystick.getAddress()
+    print "id: ", joystick.getDeviceID()
+
+    port.runForever()
+
+knobTest()
 
 
 # # Open the first Modulo Controller serial port
