@@ -235,27 +235,43 @@ class Joystick(ModuloBase):
             if self.positionChangeCallback :
                 self.positionChangeCallback(self)
 
-def TemperatureProbe(ModuloBase) :
+class TemperatureProbe(ModuloBase) :
 
     _FunctionGetTemperature = 0
+    _EventTemperatuteChanged = 0
 
     def __init__(self, port, deviceID = None) :
         super(TemperatureProbe, self).__init__(port, "co.modulo.tempprobe", deviceID)
+        self.isValid = False
+        self._temp = 0
+        self.temperatureChangeCallback = None
+
+        print 'Init'
 
     def getTemperatureC(self) :
-        received = self.transfer(self._FunctionGetTemperature, [], 2)
-        if received is None :
-            return None
-
-        t = ctypes.c_short(received[0] | (received[1] << 8)).value
-        return t/10.0
+        return self._temp/10.0
 
     def getTemperatureF(self) :
-        t = self.getTemperatureC()
-        if t is None :
-            return None
+        return self._temp*1.8/10.0 + 32
 
-        return t*1.8 + 32
+    def _init(self) :
+        if super(TemperatureProbe, self)._init() :
+
+            received = self.transfer(self._FunctionGetTemperature, [], 2)
+            if not received:
+                self._isValid = False
+                return None
+        
+            self._isValid = True
+            self._temp = ctypes.c_short(received[0] | (received[1] << 8)).value
+    
+    def _processEvent(self, eventCode, eventData) :
+        if eventCode == self._EventTemperatuteChanged :
+            self._temp = eventData
+            self._isValid = True
+
+            if self.temperatureChangeCallback :
+                self.temperatureChangeCallback(self)
 
 def BlankSlate(ModuloBase) :
     _FUNCTION_GET_DIGITAL_INPUT = 0
@@ -437,7 +453,7 @@ class Motor(ModuloBase) :
         ticksPerMicrostep = numpy.clip(self._usPerStep, 0, 65535)
 
         sendData = [ticksPerMicrostep & 0xFF, ticksPerMicrostep >> 8, resolution]
-        self._transfer(self._FunctionSetStepperSpeed, sendData)
+        self.transfer(self._FunctionSetStepperSpeed, sendData)
 
     def _processEvent(self, eventCode, eventData) :
         if eventCode == self._EventPositionReached :
@@ -453,52 +469,6 @@ class Motor(ModuloBase) :
                 self.faultChanedCallback(self)
     
 
-
-
-class Controller(ModuloBase) :
-    """
-    Connect to the Controller module on the given port.
-
-    TODO: Needs additional API for accessing I/O pins.
-    """
-    _FunctionSetPinDirection = 0
-    _FunctionGetDigitalInput = 1
-    _FunctionSetDigitalOutput = 2
-    _FunctionSetPWMOutput = 3
-    _FunctionGetAnalogInput = 4
-
-
-    def __init__(self, port) :
-        super(Controller, self).__init__(port, "co.modulo.controller", None)
-
-    def setPinDirection(self, pin, output, pullup) :
-        val = (pin << 2) | (pullup << 1) | output;
-        self.transfer(self._FunctionSetPinDirection, [val], 0)
-
-    def getDigitalInput(self, pin) :
-        receivedData = self.transfer(self._FunctionGetDigitalInput, [pin], 1)
-        return (receivedData[0] != 0)
-
-    def setDigitalOutput(self, pin, value) :
-        data = (pin << 1) | value
-        self.transfer(self._FunctionSetDigitalOutput, [data], 0)
-
-    def setPWMOutput(self, pin, value) :
-        intValue = int(255*max(0, min(1, value)))
-        self.transfer(self._FunctionSetPWMOutput, [pin, intValue], 0)
-
-    def getAnalogInput(self, pin) :
-        receivedData = self.transfer(self._FunctionGetAnalogInput, [pin], 2)
-        return ctypes.c_short(receivedData[0] | (receivedData[1] << 8)).value
-
-    # DEPRECATED
-    def readTemperatureProbe(self, pin) :
-        receivedData = self.transfer(self._FunctionReadTemperatureProbe, [pin], 2)
-        return ctypes.c_short(receivedData[0] | (receivedData[1] << 8)).value
-
-
-
-
 class Display(ModuloBase) :
     """
     Connect to the module with the specified *deviceID* on the given *port*.
@@ -508,129 +478,185 @@ class Display(ModuloBase) :
     _FUNCTION_APPEND_OP = 0
     _FUNCTION_IS_COMPLETE = 1
     _FUNCTION_GET_BUTTONS = 2
+    _FUNCTION_RAW_WRITE = 3
+    _FUNCTION_IS_EMPTY = 4
+    _FUNCTION_GET_AVAILABLE_SPACE = 5
+    _FUNCTION_SET_CURRENT = 6
+    _FUNCTION_SET_CONTRAST = 7
 
-    _OpRefresh = 0
-    _OpFillScreen = 1
-    _OpDrawLine = 2
-    _OpSetLineColor = 3
-    _OpSetFillColor = 4
-    _OpSetTextColor = 5
-    _OpDrawRect = 6
-    _OpDrawCircle = 7
-    _OpDrawTriangle = 8
-    _OpDrawString = 9
-    _OpSetCursor = 10
-    _OpSetTextSize = 11
+    _EVENT_BUTTON_CHANGED = 0
 
-    Black = (0,0,0,255)
-    White = (255, 255, 255, 255)
-    Clear = (0,0,0,0)
+    _OpRefresh = 0;
+    _OpFillScreen = 1;
+    _OpDrawLine = 2;
+    _OpSetLineColor = 3;
+    _OpSetFillColor = 4;
+    _OpSetTextColor = 5;
+    _OpDrawRect = 6;
+    _OpDrawCircle = 7;
+    _OpDrawTriangle = 8;
+    _OpDrawString = 9;
+    _OpSetCursor = 10;
+    _OpSetTextSize = 11;
+    _OpClear = 12;
+
+    _OP_BUFFER_SIZE = 28
 
     def __init__(self, port, deviceID = None) :
-
-        super(Display, self).__init__(port, "co.modulo.colordisplay", deviceID)
+        super(Display, self).__init__(port, "co.modulo.display", deviceID)
 
         self._width = 96
         self._height = 64
+        self._currentOp = -1
+        self._opBuffer = bytearray(self._OP_BUFFER_SIZE)
+        self._opBufferLen = 0
+        self._buttonState = 0
         self._isRefreshing = False
-        self._textSize = 1
+        self._availableSpace = 0
 
-    def get_width(self) :
+    def _sendOp(self, data) :
+        while (self._availableSpace < len(data)) :
+            receiveData = self.transfer(self._FUNCTION_GET_AVAILABLE_SPACE, [], 2)
+            if receiveData :
+                self._availableSpace = receiveData[0] | (receiveData[1] << 8)
+
+            if self._availableSpace < len(data) :
+                time.sleep(.005)
+
+        self._availableSpace -= len(data)
+
+        self.transfer(self._FUNCTION_APPEND_OP, data, 0)
+
+    def _beginOp(self, opCode) :
+        if opCode == self._currentOp :
+            return
+
+        self._currentOp = opCode
+        self._opBufferLen  = 1
+        self._opBuffer[0] = opCode
+
+    def _appendToOp(self, data) :
+
+        self._opBuffer[self._opBufferLen] = data
+        self._opBufferLen += 1
+
+        if (self._currentOp == self._OpDrawString and
+            self._opBufferLen == self._OP_BUFFER_SIZE-1) :
+            self._endOp()
+
+    def _endOp(self) :
+        if self._currentOp == self._OpDrawString :
+    
+            self._opBuffer[self._opBufferLen] = 0
+            self._opBufferLen += 1
+            dataToSend = [x for x in self._opBuffer[:self._opBufferLen]]
+            self._sendOp(dataToSend)
+            self._opBufferLen = 0
+            self._currentOp = -1
+
+    def clear(self) :
+        self._endOp()
+        self._waitOnRefresh();
+
+        self._sendOp([self._OpClear])
+
+    def setLineColor(self, r, g, b, a) :
+        self._endOp()
+        self._waitOnRefresh()
+
+        self._sendOp([self.OpSetLineColor, r*255,g*255,b*255,a*255])
+
+    def setTextColor(self, r, g, b, a) :
+        self._endOp()
+        self._waitOnRefresh()
+
+        self._sendOp([self._OpSetTextColor, r*255,g*255,b*255,a*255])
+    
+    def setCursor(self, x, y) :
+        self._endOp()
+        self._waitOnRefresh()
+    
+        self._sendOp([self._OpSetCursor, x, y])
+
+    def refresh(self, flip=False) :
+        self._endOp()
+        self._waitOnRefresh()
+
+        self._sendOp([self._OpRefresh, flip])
+        self._isRefreshing = True
+    
+    def fillScreen(self, r, g, b) :
+        self._endOp()
+        self._waitOnRefresh()
+
+        self._sendOp([self._OpFillScreen, 255*r, 255*g, 255*b, 255])
+
+    def drawLine(self, x0, y0, x1, y1) :
+        self._endOp();
+        self._waitOnRefresh();
+
+        ## XXX: _clipLine(&x0, &y0, &x1, &y1);
+
+        self._sendOp([self._OpDrawLine, x0, y0, x1, y1])
+
+    def drawRect(self, x, y, w, h, r) :
+        self._endOp()    
+        self._waitOnRefresh();
+
+        # XXX: clip
+
+        self._sendOp([self._OpDrawRect, x, y, w, h, r])
+
+    def drawTriangele(self, x0, y0, x1, y1, x2, y2) :
+        self._endOp()
+        self._waitOnRefresh();
+
+        self._sendOp([self._OpDrawTriangle, x0, y0, x1, y1, x2, y2])
+
+    def drawCircle(self, x, y, radius) :
+        self._endOp()
+        self._waitOnRefresh();
+
+        self._sendOp([self._OpDrawCircle, x, y, radius])        
+
+    def write(self, s) :
+        self._waitOnRefresh();
+
+        if self._currentOp != self._OpDrawString :
+            self._endOp()
+            self._beginOp(self._OpDrawString)
+
+        for c in s :
+            self._appendToOp(c)
+        
+    def setTextSize(self, size) :
+        self._endOp()
+        self._waitOnRefresh();
+
+        self._sendOp([self._OpSetTextSize, size])
+
+    def isComplete(self) :
+        retVal = self.transfer(self._FUNCTION_IS_COMPLETE, [], 1)
+        return retval is not None and retval[0]
+
+    def isComplete(self) :
+        retVal = self.transfer(self._FUNCTION_IS_EMPTY, [], 1)
+        return retval is not None and retval[0]
+
+    def _waitOnRefresh(self) :
+        if self._isRefreshing :
+            self._isRefreshing = False
+            while self.isEmpty() :
+                time.sleep(.005)
+
+    def width(self) :
         "The width in pixels of the display"
         return self._width
 
-    def get_height(self) :
+    def height(self) :
         "The height in pixels of the display"
         return self._height
 
-    def write(self, obj, color=1) :
-        first = True
-        dataToSend = [self._OpDrawString] + list(str(obj)) + [0]
-        self.transfer(self._FUNCTION_APPEND_OP, dataToSend, 0)
-
-    def writeln(self, obj, color=1) :
-        self.write(str(obj) + "\n", color)
-
-    def clear(self) :
-        self.fillScreen(self.Black)
-        self.setCursor(0,0)
-
-    def setLineColor(self, color) :
-        self._waitOnRefresh()
-
-        sendData = [self._OpSetLineColor, color[0], color[1], color[2], color[3]]
-        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
-
-    def setFillColor(self, color) :
-        self._waitOnRefresh()
-
-        sendData = [self._OpSetFillColor, color[0], color[1], color[2], color[3]]
-        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
-
-    def setTextColor(self, color) :
-        self._waitOnRefresh()
-
-        sendData = [self._OpSetTextColor, color[0], color[1], color[2], color[3]]
-        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
-
-    def setTextSize(self, size):
-        self._waitOnRefresh()
-
-        sendData = [self._OpSetTextSize, size]
-        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
-        self._textSize = size
-
-    def setCursor(self, x, y) :
-        self._waitOnRefresh()
-
-        sendData = [self._OpSetCursor, x, y]
-        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
-
-    def refresh(self):
-        self._waitOnRefresh()
-
-        sendData = [self._OpRefresh]
-        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
-
-        self._isRefreshing = True
-
-    def fillScreen(self, color):
-        self._waitOnRefresh()
-
-        sendData = [self._OpFillScreen, color[0], color[1], color[2], color[3]]
-        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
-
-    def drawLine(self, x0, y0, x1, y1):
-        self._waitOnRefresh()
-
-        # XXX: Need to properly clip the line to the display bounding rect
-        if (x0 < 0 or x0 >= self.get_width() or
-            y0 < 0 or y0 >= self.get_height() or
-            x1 < 0 or x1 >= self.get_width() or
-            y1 < 0 or y1 >= self.get_height()) :
-            return
-
-        sendData = [self._OpDrawLine, x0, y0, x1, y1]
-        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
-
-    def drawRect(self, x, y, w, h, radius):
-        self._waitOnRefresh()
-
-        sendData = [self._OpDrawRect, x, y, w, h, radius]
-        self.transfer(self._FUNCTION_APPEND_OP, sendData, 0)
-
-    def _isComplete(self) :
-        data = self.transfer(self._FUNCTION_IS_COMPLETE, [], 1)
-        if data is None :
-            return True
-        return data[0]
-
-    def _waitOnRefresh(self) :
-        if (self._isRefreshing) :
-            self._isRefreshing = False;
-            import time
-            while not self._isComplete() :
-                time.sleep(.01)
 
     def getButton(self, button) :
         return self.getButtons() & (1 << button);
