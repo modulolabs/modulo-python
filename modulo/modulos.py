@@ -273,6 +273,64 @@ class TemperatureProbe(ModuloBase) :
             if self.temperatureChangeCallback :
                 self.temperatureChangeCallback(self)
 
+
+
+class IRRemote(ModuloBase) :
+
+    _FUNCTION_RECEIVE = 0
+    _FUNCTION_GET_READ_SIZE = 1
+    _FUNCTION_CLEAR_READ = 2
+    _FUNCTION_SET_SEND_DATA = 3
+    _FUNCTION_SEND = 4
+    _FUNCTION_IS_IDLE = 5
+    _FUNCTION_SET_BREAK_LENGTH = 6
+
+    _EVENT_RECEIVE = 0
+
+    def __init__(self, port, deviceID = None) :
+        super(IRRemote, self).__init__(port, "co.modulo.ir", deviceID)
+        
+    def setBreakLength(self, l) :
+        self.transfer(self._FUNCTION_SET_BREAK_LENGTH, [len & 0xFF, len >> 8])
+    
+    
+    def _processEvent(self, eventCode, eventData) :
+        print 'Process Event'
+        availBytes = eventData
+    
+        data = []
+        i = 0
+        while (i < availBytes) :
+            data.append(self.transfer(self._FUNCTION_RECEIVE, [i, 16], 16))
+            i += 16
+
+        self.transfer(self._FUNCTION_CLEAR_READ, [], 0)
+        
+        print 'IR DATA:', data
+
+
+    def send(self, data) :
+        print 'Send'
+
+        print 'Address is: ', self.getAddress(), self.getDeviceID()
+        isIdle = False
+        while not isIdle :
+            val = self.transfer(self._FUNCTION_IS_IDLE, [], 1)
+            print val
+            if val is None:
+                return
+            isIdle = val[0]
+            if isIdle :
+                time.sleep(.005)
+
+        for i in range(len(data), 16) :
+            packet = [i] + data[i:i+16]
+            if not self.transfer(self._FUNCTION_SET_SEND_DATA, packet, 0) :
+                return
+
+        self.transfer(self._FUNCTION_SEND, [len(data)], 0)
+
+
 def BlankSlate(ModuloBase) :
     _FUNCTION_GET_DIGITAL_INPUT = 0
     _FUNCTION_GET_DIGITAL_INPUTS = 1
