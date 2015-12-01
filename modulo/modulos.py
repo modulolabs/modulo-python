@@ -1,5 +1,5 @@
 import ctypes, ctypes.util
-import numpy
+import numpy, time
 
 class ModuloBase(object) :
     """
@@ -71,7 +71,7 @@ class ModuloBase(object) :
             return False
 
         self._address = self._port.getAddress(self._deviceID)
-        if (self._address == 0) :
+        if (self._address == 0 or self._address == 127) :
             self._port._lastAssignedAddress += 1
             self._address = self._port._lastAssignedAddress
             self._port.setAddress(self._deviceID, self._address)
@@ -167,11 +167,11 @@ class Joystick(ModuloBase):
     If *deviceID* isn't specified, finds the first unused KnobModule.
     """ 
 
-    FUNCTION_GET_BUTTON=0
-    FUNCTION_GET_POSITION=1
+    _FUNCTION_GET_BUTTON=0
+    _FUNCTION_GET_POSITION=1
 
-    EVENT_BUTTON_CHANGED=0
-    EVENT_POSITION_CHANGED=1
+    _EVENT_BUTTON_CHANGED=0
+    _EVENT_POSITION_CHANGED=1
 
     def __init__(self, port, deviceID = None) :
         super(Joystick, self).__init__(port, "co.modulo.joystick", deviceID)
@@ -189,12 +189,10 @@ class Joystick(ModuloBase):
 
     def getHPos(self) :
         self._init()
-
         return 1 - self._hPos*2.0/255.0
 
     def getVPos(self) :
         self._init()
-
         return 1 - self._vPos*2.0/255.0
 
     def _init(self) :
@@ -204,18 +202,18 @@ class Joystick(ModuloBase):
         return False
 
     def _refreshState(self) :
-        received = self.transfer(self.FUNCTION_GET_BUTTON, [], 1)
+        received = self.transfer(self._FUNCTION_GET_BUTTON, [], 1)
         if received is not None :
             self._buttonState = received[0]
 
-        received = self.transfer(self.FUNCTION_GET_POSITION, [], 2)
-        # XXX: This may not be working
-        if received is not None and len(received) == 2 :
+        received = self.transfer(self._FUNCTION_GET_POSITION, [], 2)
+        if received :
             self._hPos = received[0]
             self._vPos = received[1]
 
+
     def _processEvent(self, eventCode, eventData) :
-        if eventCode == self.EVENT_BUTTON_CHANGED :
+        if eventCode == self._EVENT_BUTTON_CHANGED :
             buttonPressed = (eventData >> 8)
             buttonReleased = (eventData & 0xFF)
 
@@ -228,7 +226,7 @@ class Joystick(ModuloBase):
             if self.buttonReleaseCallback :
                 self.buttonReleaseCallback(self)
         
-        if eventCode == self.EVENT_POSITION_CHANGED :
+        if eventCode == self._EVENT_POSITION_CHANGED :
             self._hPos = (eventData >> 8)
             self._vPos = (eventData & 0xFF)
             
@@ -246,8 +244,6 @@ class TemperatureProbe(ModuloBase) :
         self._temp = 0
         self.temperatureChangeCallback = None
 
-        print 'Init'
-
     def getTemperatureC(self) :
         return self._temp/10.0
 
@@ -264,7 +260,10 @@ class TemperatureProbe(ModuloBase) :
         
             self._isValid = True
             self._temp = ctypes.c_short(received[0] | (received[1] << 8)).value
-    
+        
+            if self.temperatureChangeCallback :
+                self.temperatureChangeCallback(self)
+
     def _processEvent(self, eventCode, eventData) :
         if eventCode == self._EventTemperatuteChanged :
             self._temp = eventData
@@ -331,7 +330,7 @@ class IRRemote(ModuloBase) :
         self.transfer(self._FUNCTION_SEND, [len(data)], 0)
 
 
-def BlankSlate(ModuloBase) :
+class BlankSlate(ModuloBase) :
     _FUNCTION_GET_DIGITAL_INPUT = 0
     _FUNCTION_GET_DIGITAL_INPUTS = 1
     _FUNCTION_GET_ANALOG_INPUT = 2
@@ -345,7 +344,7 @@ def BlankSlate(ModuloBase) :
     _FUNCTION_SET_PWM_FREQUENCY = 10
 
     def __init__(self, port, deviceID = None) :
-        super(BlankSlate, self).__init__(port, "co.modulo.io", deviceID)
+        super(BlankSlate, self).__init__(port, "co.modulo.blankslate", deviceID)
 
     def getDigitalInput(self, pin) :
         result = self.transfer(self._FUNCTION_GET_DIGITAL_INPUT, [pin], 1)
@@ -358,7 +357,7 @@ def BlankSlate(ModuloBase) :
             return result[0]
     
     def getAnalogInput(self, pin) :
-        result = self.transfer(self._FUNCTION_GET_ANALOG_INPUT, [pin], 2)
+        result = self.transfer(self._FUNCTION_GET_ANALOG_INPUT, [pin, 0], 2)
         if result is not None :
             return (result[0] | (result[1] << 8))/1023.0
     
@@ -368,11 +367,11 @@ def BlankSlate(ModuloBase) :
     def setDirections(self, outputs) :
         self.transfer(self._FUNCTION_SET_DATA_DIRECTIONS, [outputs], 0)
 
-    def setDigitialOutput(self, pin, value) :
-        self.transfer(self._FUNCTION_SET_DIGITAL_OUTPUTS, [pin, value], 0)
+    def setDigitalOutput(self, pin, value) :
+        self.transfer(self._FUNCTION_SET_DIGITAL_OUTPUT, [pin, value], 0)
 
     def setDigitalOutputs(self, values) :
-        self.transfer(self._FUNCTION_SET_DATA_DIRECTIONS, [values], 0)
+        self.transfer(self._FUNCTION_SET_DIGITAL_OUTPUTS, [values], 0)
 
     def setPWMValue(self, pin, value) :
         if value >= 1 :
@@ -380,7 +379,7 @@ def BlankSlate(ModuloBase) :
         if value <= 0 :
             return self.setDigitalOutput(pin, 0.0)
 
-        v = 65535*value
+        v = int(65535*value)
         sendData = [pin, v & 0xFF, v >> 8]
     
         self.transfer(self._FUNCTION_SET_PWM_OUTPUT, sendData, 0)
@@ -397,7 +396,7 @@ def BlankSlate(ModuloBase) :
         self.transfer(self._FUNCTION_SET_PWM_FREQUENCY, sendData, 0)
 
 
-class Motor(ModuloBase) :
+class MotorDriver(ModuloBase) :
 
     ModeDisabled = 0
     ModeDC = 1
@@ -416,7 +415,7 @@ class Motor(ModuloBase) :
     _EventFaultChanged = 1;
 
     def __init__(self, port, deviceID = None) :
-        super(BlankSlate, self).__init__(port, "co.modulo.motor", deviceID)
+        super(MotorDriver, self).__init__(port, "co.modulo.motor", deviceID)
     
         self.positionReachedCallback = None
         self.faultChangedCallback = None
@@ -429,40 +428,39 @@ class Motor(ModuloBase) :
         
     
     def setChannel(self, channel, amount) :
-        intValue = numpy.clip(amount, 0, 1)*0xFFFF
+        intValue = int(numpy.clip(amount, 0, 1)*0xFFFF)
         data = [channel, intValue & 0xFF, intValue >> 8]
         self.transfer(self._FunctionSetValue, data, 0)
 
-    def setMotorA(self, amount) :
-        if amount > 0 :
+    def setMotorA(self, value) :
+        if value > 0 :
             self.setChannel(0, 1)
             self.setChannel(1, 1-value)
         else :
-            self.setChanenl(0, 1+value)
+            self.setChannel(0, 1+value)
             self.setChannel(1, 1)
 
-    def setMotorB(self, amount) :
-        if amount > 0 :
+    def setMotorB(self, value) :
+        if value > 0 :
             self.setChannel(2, 1)
             self.setChannel(3, 1-value)
         else :
-            self.setChanenl(2, 1+value)
+            self.setChannel(2, 1+value)
             self.setChannel(3, 1)
-
 
     def setMode(self, mode) :
         self.transfer(self._FunctionSetEnabled, [mode], 0)
 
     def setCurrentLimit(self, limit) :
-        data = [numpy.clip(limit, 0, 1)*63]
-        self.transfer(self.FunctionSetCurrrentLimit, data, 0)
+        data = [int(numpy.clip(limit, 0, 1)*63)]
+        self.transfer(self._FunctionSetCurrentLimit, data, 0)
 
     def setPWMFrequency(self, freq) :
-        data = [frequency * 0xFF, frequency >> 8]
-        self.transfer(self.FunctionSetPWMFrequency, data, 0)
+        data = [freq & 0xFF, freq >> 8]
+        self.transfer(self._FunctionSetFrequency, data, 0)
 
     def setStepperSpeed(self, stepsPerSecond) :
-        self._setStepperRate(1e6/stepsPerSecond)
+        self.setStepperRate(int(1e6/stepsPerSecond))
 
     def setStepperRate(self, usPerStep) :
         self._usPerStep = usPerStep
@@ -511,7 +509,7 @@ class Motor(ModuloBase) :
         ticksPerMicrostep = numpy.clip(self._usPerStep, 0, 65535)
 
         sendData = [ticksPerMicrostep & 0xFF, ticksPerMicrostep >> 8, resolution]
-        self.transfer(self._FunctionSetStepperSpeed, sendData)
+        self.transfer(self._FunctionSetStepperSpeed, sendData, 0)
 
     def _processEvent(self, eventCode, eventData) :
         if eventCode == self._EventPositionReached :
@@ -521,10 +519,12 @@ class Motor(ModuloBase) :
         if eventCode == self._EventFaultChanged :
             if eventData & 1 :
                 self._fault = True
+                if self.faultChangedCallback :
+                    self.faultChangedCallback(self)
             if eventData & 2 :
                 self._fault = False
-            if self.faultChangedCallback :
-                self.faultChanedCallback(self)
+                if self.faultChangedCallback :
+                    self.faultChangedCallback(self)
     
 
 class Display(ModuloBase) :
@@ -571,6 +571,8 @@ class Display(ModuloBase) :
         self._buttonState = 0
         self._isRefreshing = False
         self._availableSpace = 0
+        self.buttonPressCallback = None
+        self.buttonReleaseCallback = None
 
     def _sendOp(self, data) :
         while (self._availableSpace < len(data)) :
@@ -618,17 +620,23 @@ class Display(ModuloBase) :
 
         self._sendOp([self._OpClear])
 
-    def setLineColor(self, r, g, b, a) :
+    def setLineColor(self, r, g, b, a=1) :
         self._endOp()
         self._waitOnRefresh()
 
-        self._sendOp([self.OpSetLineColor, r*255,g*255,b*255,a*255])
+        self._sendOp([self._OpSetLineColor, int(r*255), int(g*255), int(b*255), int(a*255)])
 
-    def setTextColor(self, r, g, b, a) :
+    def setFillColor(self, r, g, b, a=1) :
         self._endOp()
         self._waitOnRefresh()
 
-        self._sendOp([self._OpSetTextColor, r*255,g*255,b*255,a*255])
+        self._sendOp([self._OpSetFillColor, int(r*255), int(g*255), int(b*255), int(a*255)])
+
+    def setTextColor(self, r, g, b, a=1) :
+        self._endOp()
+        self._waitOnRefresh()
+
+        self._sendOp([self._OpSetTextColor, int(r*255), int(g*255), int(b*255), int(a*255)])
     
     def setCursor(self, x, y) :
         self._endOp()
@@ -647,7 +655,7 @@ class Display(ModuloBase) :
         self._endOp()
         self._waitOnRefresh()
 
-        self._sendOp([self._OpFillScreen, 255*r, 255*g, 255*b, 255])
+        self._sendOp([self._OpFillScreen, int(255*r), int(255*g), int(255*b), 255])
 
     def drawLine(self, x0, y0, x1, y1) :
         self._endOp();
@@ -657,7 +665,7 @@ class Display(ModuloBase) :
 
         self._sendOp([self._OpDrawLine, x0, y0, x1, y1])
 
-    def drawRect(self, x, y, w, h, r) :
+    def drawRect(self, x, y, w, h, r=0) :
         self._endOp()    
         self._waitOnRefresh();
 
@@ -717,36 +725,52 @@ class Display(ModuloBase) :
 
 
     def getButton(self, button) :
-        return self.getButtons() & (1 << button);
+        return bool(self.getButtons() & (1 << button))
 
     def getButtons(self) :
-        receivedData = transfer(self._FUNCTION_GET_BUTTONS, [], 1)
-        if (receiveData is None) :
+        receivedData = self.transfer(self._FUNCTION_GET_BUTTONS, [], 1)
+        if (receivedData is None) :
             return False
 
         return receivedData[0]
 
     def drawSplashScreen(self):
-        self.setFillColor((90,0,50));
-        self.setLineColor((0,0,0,0));
-        self.drawRect(0, 0, WIDTH, HEIGHT);
-        self.setCursor(0, 40);
+        self.setFillColor(.27, 0, .24)
+        self.setLineColor(0,0,0,0)
+        self.drawRect(0, 0, self._width, self._height)
+        self.setCursor(0, 40)
 
-        self.write("     MODULO");
+        self.setTextColor(1,1,1)
+        self.write("     MODULO")
 
-        self.setFillColor((255,255,255));
+        self.setFillColor(1, 1, 1)
 
-        self.drawLogo(WIDTH/2-18, 10, 35, 26);
+        self.drawLogo(self.width()/2-18, 10, 35, 26)
     
 
     def drawLogo(self, x, y, width, height):
-        self.lineWidth = width/7;
+        lineWidth = width/7;
 
-        self.drawRect(x, y, width, lineWidth, 1);
-        self.drawRect(x, y, lineWidth, height, 1);
-        self.drawRect(x+width-lineWidth, y, lineWidth, height, 1);
+        self.drawRect(x, y, width, lineWidth);
+        self.drawRect(x, y, lineWidth, height);
+        self.drawRect(x+width-lineWidth, y, lineWidth, height);
 
-        self.drawRect(x+lineWidth*2, y+lineWidth*2, lineWidth, height-lineWidth*2, 1);
-        self.drawRect(x+lineWidth*4, y+lineWidth*2, lineWidth, height-lineWidth*2, 1);
-        self.drawRect(x+lineWidth*2, y+height-lineWidth, lineWidth*3, lineWidth, 1);
+        self.drawRect(x+lineWidth*2, y+lineWidth*2, lineWidth, height-lineWidth*2);
+        self.drawRect(x+lineWidth*4, y+lineWidth*2, lineWidth, height-lineWidth*2);
+        self.drawRect(x+lineWidth*2, y+height-lineWidth, lineWidth*3, lineWidth);
+
+    def _processEvent(self, eventCode, eventData) :
+        if eventCode == self._EVENT_BUTTON_CHANGED :
+            buttonPressed = eventData >> 8
+            buttonReleased = eventData & 0xFF
+    
+            self._buttonState |= buttonPressed
+            self._buttonState &= buttonReleased
+
+            for i in range(3) :
+                if buttonPressed & (1 << i) and self.buttonPressCallback :
+                    self.buttonPressCallback(self, i)
+
+                if buttonReleased & (1 << i) and self.buttonReleaseCallback :
+                    self.buttonReleaseCallback(self, i)
 
