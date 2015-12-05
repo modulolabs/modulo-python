@@ -42,17 +42,23 @@ class Port(object) :
             s = s + chr(b)
         return s
 
-    def findModuloByID(self, id) :
+    def _findModuloByID(self, id) :
+        """Find the modulo object with the specified deviceID"""
         for m in self._modulos :
             if (m._deviceID == id) :
                 return m
         return None
 
     def runForever(self) :
+        """Continue to process events forever"""
         while True :
             self.loop()
 
     def loop(self, noWait=False) :
+        """Call loop as often as possible to handle events and execute callbacks"""
+        for m in self._modulos :
+            m.getAddress()
+
         packet = self._connection.getNextPacket(noWait)
         if (packet == None) :
             return False
@@ -65,7 +71,7 @@ class Port(object) :
 
             print('Event', deviceID, eventCode, eventData)
             
-            m = self.findModuloByID(deviceID)
+            m = self._findModuloByID(deviceID)
             if m :
                 m._processEvent(eventCode, eventData)
         else :
@@ -73,19 +79,21 @@ class Port(object) :
 
         return True
 
-    # Reset all devices on the port
-    def globalReset(self) :
+    def _globalReset(self) :
+        """Reset all modulos to their initial state"""
         self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandGlobalReset, [], 0)
 
         for m in modulos :
             m._reset()
 
-    def exitBootloader(self) :
+    def _exitBootloader(self) :
+        """Tell all modulos to exit their bootloader and begin normal operation"""
         self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandExitBootloader, [], 0)
 
-    # Returns the device ID of the device on the port with the
-    # next greater ID than the one provided.
-    def getNextDeviceID(self, lastDeviceID) :
+
+    def _getNextDeviceID(self, lastDeviceID) :
+        """Find the smallest deviceID that's greater than the one provided.
+           This can be used to iterate over all connected modulos."""
         if lastDeviceID == 0xFFFF :
             return 0xFFFF
         
@@ -97,9 +105,9 @@ class Port(object) :
         if resultData:
             return resultData[1] | (resultData[0] << 8)
 
-    # Returns the device ID of the device on the port with the
-    # next greater ID than the one provided.
-    def getNextUnassignedDeviceID(self, lastDeviceID) :
+    def _getNextUnassignedDeviceID(self, lastDeviceID) :
+        """Like getNextDeviceID, but only returns IDs of modulos that don't have
+            an assigned address."""
         if lastDeviceID == 0xFFFF :
             return 0xFFFF
         
@@ -111,24 +119,29 @@ class Port(object) :
         if resultData :
             resultData[1] | (resultData[0] << 8)
 
-    def setAddress(self, deviceID, address) :
+    def _setAddress(self, deviceID, address) :
+        """Set the I2C address of the modulo with the specified ID"""
         sendData = [deviceID & 0xFF, deviceID >> 8, address]
         self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandSetAddress,
             sendData, 0)
     
-    def getAddress(self, deviceID) :
+    def _getAddress(self, deviceID) :
+        """Get the I2C address of the modulo with the specified ID"""
         sendData = [deviceID & 0xFF, deviceID >> 8]
         retval = self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandGetAddress,
             sendData, 1)
         if retval :
             return retval[0]
 
-    def setStatus(self, deviceID, status) :
+    def _setStatus(self, deviceID, status) :
+        """Set the status LED of the modulo with the specified ID to either On,
+           Off, or Blinking"""
         sendData = [deviceID & 0xFF, deviceID >> 8, status]
         self._connection.transfer(
             self._BroadcastAddress, self._BroadcastCommandSetStatusLED, sendData, 0)
 
-    def getVersion(self, deviceID) :
+    def _getVersion(self, deviceID) :
+        """Get the firmware version of the modulo with the specified ID"""
         sendData = [deviceID & 0xFF, deviceID >> 8]
         retval = self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandGetVersion,
             sendData, 2)
@@ -136,7 +149,8 @@ class Port(object) :
             return None
         return retval[0] | (retval[1] << 8)
 
-    def getDeviceType(self, deviceID) :
+    def _getDeviceType(self, deviceID) :
+        """Get the device type string of the modulo with the specified ID"""
         sendData = [deviceID & 0xFF, deviceID >> 8]
         resultData = self._connection.transfer(
             self._BroadcastAddress, self._BroadcastCommandGetDeviceType, sendData, 31)
@@ -192,7 +206,7 @@ class SerialConnection(object) :
                 packet.append(x)
 
         self._serial.write([self._Delimeter] + packet + [self._Delimeter])
-
+        
     def transfer(self, address, command, sendData, receiveLen) :
         if address is None :
             return None
@@ -215,7 +229,7 @@ class SerialConnection(object) :
         return receiveData[2:]
 
     def getNextPacket(self, noWait=False) :
-        if noWait and (not self._outOfBandPackets) and (self._connection.inWaiting() == 0):
+        if noWait and (not self._outOfBandPackets) and (self._serial.inWaiting() == 0):
             return None
 
         if self._outOfBandPackets :
