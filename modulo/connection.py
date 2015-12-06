@@ -69,7 +69,6 @@ class Port(object) :
             deviceID = event[1] | (event[2] << 8)
             eventData = event[3] | (event[4] << 8)
 
-            print('Event', deviceID, eventCode, eventData)
             
             m = self._findModuloByID(deviceID)
             if m :
@@ -254,7 +253,6 @@ class SerialConnection(object) :
             return None
 
         while (c != self._Delimeter and c is not None) :
-            print('Skipping before delimeter: ', c)
             c = self._readByte()
 
         while (c == self._Delimeter) :
