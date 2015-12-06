@@ -170,7 +170,6 @@ class Knob(ModuloBase) :
         if eventCode == self._EventPositionChanged :
             # Convert from 16 bit unsigned to 16 bit signed
             self._position = ctypes.c_short(eventData).value
-            print self._position
             if self.positionChangeCallback :
                 self.positionChangeCallback(self)
 
@@ -818,13 +817,13 @@ class Display(ModuloBase) :
     def isEmpty(self) :
         """Return whether the queue of drawing operations is empty. If the display
            is still refreshing, it may be empty but not complete."""
-        retVal = self.transfer(self._FUNCTION_IS_EMPTY, [], 1)
-        return retval is not None and retval[0]
+        retval = self.transfer(self._FUNCTION_IS_EMPTY, [], 1)
+        return retval and bool(retval[0])
 
     def _waitOnRefresh(self) :
         if self._isRefreshing :
             self._isRefreshing = False
-            while self.isEmpty() :
+            while not self.isEmpty() :
                 time.sleep(.005)
 
 
@@ -866,6 +865,17 @@ class Display(ModuloBase) :
         self.drawRect(x+lineWidth*2, y+lineWidth*2, lineWidth, height-lineWidth*2);
         self.drawRect(x+lineWidth*4, y+lineWidth*2, lineWidth, height-lineWidth*2);
         self.drawRect(x+lineWidth*2, y+height-lineWidth, lineWidth*3, lineWidth);
+
+    def setCurrent(self, current) :
+        """Set the display's master current. Higher current values produce a
+            brighter, more vivid image but may increase image burn-in and audible
+            noise from the OLED driver. The default is .75."""
+        
+
+    def setContrast(self, r, g, b) :
+        """Set the per channel contrast values, which affect image brightness and
+           color balance. The default is (.93, 0.555, 1.0)."""
+
 
     def _processEvent(self, eventCode, eventData) :
         if eventCode == self._EVENT_BUTTON_CHANGED :
