@@ -9,7 +9,7 @@ from setuptools import setup
 # See http://peterdowns.com/posts/first-time-with-pypi.html for more pypi info
 
 setup(name='modulo-python',
-    version='0.5',
+    version='0.7',
     description='Python support for Modulo hardware',
     url='https://github.com/integer-labs/modulo-python',
     download_url = 'https://github.com/integer-labs/modulo-python/tarball/0.1',
