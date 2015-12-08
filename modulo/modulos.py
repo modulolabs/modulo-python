@@ -304,6 +304,14 @@ class TemperatureProbe(ModuloBase) :
 
 
 class IRRemote(ModuloBase) :
+    """
+    Infrared remote control transmitter and receiver
+
+    Note: this class can send and receive raw IR data as a sequence of pulse
+    lengths, but support for encoding and decoding those pulse lengths into
+    useful codes is not quite complete. Full encoding/decoding will be implemented
+    soon. Please check community.modulo.co for more information on the status
+    of this feature."""
 
     _FUNCTION_RECEIVE = 0
     _FUNCTION_GET_READ_SIZE = 1
