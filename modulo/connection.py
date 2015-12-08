@@ -174,7 +174,7 @@ class SerialConnection(object) :
             # Modulo Controller will contain in the hardware description:
             #    "16d0:a67" on OSX
             #    "16D0:0A67" on Windows 71
-            for port in list_ports.grep("16d0:0?b58") :
+            for port in self._grepPorts("16d0:0?b58") :
                 if (controller == 0) :
                     path = port[0]
                     break
@@ -193,6 +193,17 @@ class SerialConnection(object) :
         # reliable.
         while not self.getNextPacket() :
             self.sendPacket([self._CodeEcho])
+
+    def _grepPorts(self, regexp) :
+        """This is a copy of serial.list_ports.grep that has been modified to
+           work around an error that occurs on OSX 10.10.5, where the desc
+           field is None which causes the grep to fail"""
+        import re
+        from serial.tools import list_ports
+        r = re.compile(regexp, re.I)
+        for port, desc, hwid in list_ports.comports() :
+            if r.search(hwid) :
+                yield port, desc, hwid
 
     def sendPacket(self, data) :
     
