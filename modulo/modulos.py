@@ -692,7 +692,7 @@ class Display(ModuloBase) :
         self._opBuffer[0] = opCode
 
     def _appendToOp(self, data) :
-        self._opBuffer[self._opBufferLen] = ord(data)
+        self._opBuffer[self._opBufferLen] = data
         self._opBufferLen += 1
 
         if (self._currentOp == self._OpDrawString and
@@ -806,7 +806,7 @@ class Display(ModuloBase) :
             self._beginOp(self._OpDrawString)
 
         for c in s :
-            self._appendToOp(c)
+            self._appendToOp(ord(c))
         
     def setTextSize(self, size) :
         """Set the text size. This is a multiplier of the base text size,
