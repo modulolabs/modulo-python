@@ -2,7 +2,7 @@
 import modulo
 
 # This callback function will run whenever the knob position changes
-def onPositionChanged(knob) :
+def onKnobChanged(knob) :
     # Get the angle of the knob (between 0 and 360)
     angle = knob.getAngle()
 
@@ -21,8 +21,10 @@ port = modulo.Port()
 # Create a Knob object attached to the port
 knob = modulo.Knob(port)
 
-# Register our callback function
-knob.positionChangeCallback = onPositionChanged
+# Register our callback function for both position and button changes
+knob.positionChangeCallback = onKnobChanged
+knob.buttonPressCallback = onKnobChanged
+knob.buttonReleaseCallback = onKnobChanged
 
 # Process events until the program is terminated.
 port.runForever()

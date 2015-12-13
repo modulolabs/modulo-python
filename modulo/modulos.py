@@ -163,7 +163,7 @@ class Knob(ModuloBase) :
             self._buttonState = self._buttonState and not buttonReleased
 
             if buttonPressed and self.buttonPressCallback :
-                self._buttonPressCallback(self)
+                self.buttonPressCallback(self)
 
             if buttonReleased and self.buttonReleaseCallback :
                 self.buttonReleaseCallback(self)
