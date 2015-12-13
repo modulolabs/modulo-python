@@ -285,10 +285,10 @@ class TemperatureProbe(ModuloBase) :
 
             received = self.transfer(self._FunctionGetTemperature, [], 2)
             if not received:
-                self._isValid = False
+                self.isValid = False
                 return None
         
-            self._isValid = True
+            self.isValid = True
             self._temp = ctypes.c_short(received[0] | (received[1] << 8)).value
         
             if self.temperatureChangeCallback :
@@ -297,7 +297,7 @@ class TemperatureProbe(ModuloBase) :
     def _processEvent(self, eventCode, eventData) :
         if eventCode == self._EventTemperatuteChanged :
             self._temp = eventData
-            self._isValid = True
+            self.isValid = True
 
             if self.temperatureChangeCallback :
                 self.temperatureChangeCallback(self)
