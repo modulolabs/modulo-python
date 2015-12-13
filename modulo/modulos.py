@@ -1,3 +1,4 @@
+from __future__ import print_function, division, absolute_import, unicode_literals
 import ctypes, ctypes.util
 import numpy, time
 
@@ -487,10 +488,7 @@ class MotorDriver(ModuloBase) :
     def _setMotor(self, side, value) :
         """Sets the motor output for a side (A=0,B=2) to a specified value.
            Includes a -1<=x<=1 check on value to prevent silent failure."""
-        if value > 1 :
-            value = 1
-        elif value < -1 :
-            value = -1
+        value = numpy.clip(value, -1, 1)
         if value > 0 :
             self.setChannel(side, 1)
             self.setChannel(side+1, 1-value)
