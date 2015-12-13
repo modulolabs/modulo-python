@@ -3,8 +3,8 @@ import modulo, sys, time
 
 def identify() :
     if len(sys.argv) != 2 or not sys.argv[1].isdigit() :
-        print 'Specify the ID of a device to identify. For instance, '
-        print '   ',sys.argv[0],"123"
+        print('Specify the ID of a device to identify. For instance, ')
+        print('   ',sys.argv[0],"123")
         sys.exit(-1)
 
     port = modulo.SerialPort()
@@ -24,7 +24,7 @@ def identify() :
         deviceID = port.get_next_device_id(deviceID+1)
 
     if not found :
-        print 'Could not find device with id', requestedDeviceID
+        print('Could not find device with id', requestedDeviceID)
         sys.exit(-1)
 
     time.sleep(2)
@@ -37,12 +37,12 @@ def list() :
 
     deviceID = port.get_next_device_id(0)
     while  deviceID is not None :
-        print "DeviceID: ", deviceID
-        print "    device type: ", port.get_device_type(deviceID)
-        print "    manufactuer: ", port.get_manufacturer(deviceID)
-        print "    product:     ", port.get_product(deviceID)
-        print "    version:     ", port.get_version(deviceID)
-        print "    i2c address: ", port.get_address(deviceID)
+        print("DeviceID: ", deviceID)
+        print("    device type: ", port.get_device_type(deviceID))
+        print("    manufactuer: ", port.get_manufacturer(deviceID))
+        print("    product:     ", port.get_product(deviceID))
+        print("    version:     ", port.get_version(deviceID))
+        print("    i2c address: ", port.get_address(deviceID))
 
         deviceID = port.get_next_device_id(deviceID+1)
 
