@@ -36,7 +36,7 @@ def list() :
         version = port._getVersion(deviceID)
         
         if args.interactive :
-            port._setStatus(deviceID,port.StatusBlinking)
+            port._setStatus(deviceID,port._StatusBlinking)
 
         print(_getNameForType(deviceType))
         print("         ID: ", deviceID)
@@ -46,7 +46,7 @@ def list() :
             print()
             print("Press return to continue")
             sys.stdin.readline()
-            port._setStatus(deviceID, port.StatusOff)
+            port._setStatus(deviceID, port._StatusOff)
 
         deviceID = port._getNextDeviceID(deviceID)
 

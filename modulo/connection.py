@@ -25,6 +25,10 @@ class Port(object) :
 
     _CodeEvent = ord('V')
     
+    _StatusOff = 0
+    _StatusOn = 1
+    _StatusBlinking = 2
+
     def __init__(self, serialPortPath=None) :
         self._portInitialized = False
         self._lastAssignedAddress = 9
@@ -59,24 +63,28 @@ class Port(object) :
         for m in self._modulos :
             m.getAddress()
 
+        gotPacket = False
         packet = self._connection.getNextPacket(noWait)
-        if (packet == None) :
-            return False
-        if (packet[0] == self._CodeEvent) :
-            event = packet[1:]
+        while packet :
+            gotPacket = True
+            if (packet[0] == self._CodeEvent) :
+                event = packet[1:]
 
-            eventCode = event[0]
-            deviceID = event[1] | (event[2] << 8)
-            eventData = event[3] | (event[4] << 8)
+                eventCode = event[0]
+                deviceID = event[1] | (event[2] << 8)
+                eventData = event[3] | (event[4] << 8)
 
-            
-            m = self._findModuloByID(deviceID)
-            if m :
-                m._processEvent(eventCode, eventData)
-        else :
-            print('Packet: ', packet)
+                
+                m = self._findModuloByID(deviceID)
+                if m :
+                    m._processEvent(eventCode, eventData)
+            else :
+                print('Packet: ', packet)
 
-        return True
+            # Never wait when checking to see if there are additional packets
+            packet = self._connection.getNextPacket(noWait=True)
+
+        return gotPacket
 
     def _globalReset(self) :
         """Reset all modulos to their initial state"""
@@ -144,7 +152,7 @@ class Port(object) :
         sendData = [deviceID & 0xFF, deviceID >> 8]
         retval = self._connection.transfer(self._BroadcastAddress, self._BroadcastCommandGetVersion,
             sendData, 2)
-        if retval is None :
+        if not retval :
             return None
         return retval[0] | (retval[1] << 8)
 
