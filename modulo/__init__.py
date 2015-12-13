@@ -5,5 +5,5 @@ Modulo Docstring
 """
 
 from modulo.connection import Port
-from modulos import *
+from modulo.modulos import *
 
