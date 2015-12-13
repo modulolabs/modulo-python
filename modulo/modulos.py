@@ -324,7 +324,7 @@ class IRRemote(ModuloBase) :
         self.transfer(self._FUNCTION_SET_BREAK_LENGTH, [len & 0xFF, len >> 8])
     
     def _processEvent(self, eventCode, eventData) :
-        print 'Process Event'
+        print('Process Event')
         availBytes = eventData
     
         data = []
@@ -335,20 +335,20 @@ class IRRemote(ModuloBase) :
 
         self.transfer(self._FUNCTION_CLEAR_READ, [], 0)
         
-        print 'IR DATA:', data
+        print('IR DATA:', data)
 
 
     def send(self, data) :
         """Send raw data. Each byte is the number of 50us ticks that the output
             should be on or off. The first byte is an off period."""
 
-        print 'Send'
+        print('Send')
 
-        print 'Address is: ', self.getAddress(), self.getDeviceID()
+        print ('Address is: ', self.getAddress(), self.getDeviceID())
         isIdle = False
         while not isIdle :
             val = self.transfer(self._FUNCTION_IS_IDLE, [], 1)
-            print val
+            print(val)
             if val is None:
                 return
             isIdle = val[0]
@@ -483,28 +483,30 @@ class MotorDriver(ModuloBase) :
         intValue = int(numpy.clip(amount, 0, 1)*0xFFFF)
         data = [channel, intValue & 0xFF, intValue >> 8]
         self.transfer(self._FunctionSetValue, data, 0)
-
+    
+    def _setMotor(self, side, value) :
+        """Sets the motor output for a side (A=0,B=2) to a specified value.
+           Includes a -1<=x<=1 check on value to prevent silent failure."""
+        if value > 1 :
+            value = 1
+        elif value < -1 :
+            value = -1
+        if value > 0 :
+            self.setChannel(side, 1)
+            self.setChannel(side+1, 1-value)
+        else :
+            self.setChannel(side, 1+value)
+            self.setChannel(side+1, 1)
+    
     def setMotorA(self, value) :
         """Set the motor output A to the specified amount, between -1 and 1.
            Changes the mode to ModeDC if it's not already."""
-
-        if value > 0 :
-            self.setChannel(0, 1)
-            self.setChannel(1, 1-value)
-        else :
-            self.setChannel(0, 1+value)
-            self.setChannel(1, 1)
+        self._setMotor(0, value)
 
     def setMotorB(self, value) :
         """Set the motor output B to the specified amount, between -1 and 1.
            Changes the mode to ModeDC if it's not already."""
-
-        if value > 0 :
-            self.setChannel(2, 1)
-            self.setChannel(3, 1-value)
-        else :
-            self.setChannel(2, 1+value)
-            self.setChannel(3, 1)
+        self._setMotor(2, value)
 
     def setMode(self, mode) :
         """Set the driver mode to Disabled, DC, or Stepper"""
@@ -684,8 +686,7 @@ class Display(ModuloBase) :
         self._opBuffer[0] = opCode
 
     def _appendToOp(self, data) :
-
-        self._opBuffer[self._opBufferLen] = data
+        self._opBuffer[self._opBufferLen] = ord(data)
         self._opBufferLen += 1
 
         if (self._currentOp == self._OpDrawString and
