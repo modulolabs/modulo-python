@@ -681,7 +681,7 @@ class Display(ModuloBase) :
 
         self._availableSpace -= len(data)
 
-        self.transfer(self._FUNCTION_APPEND_OP, data, 0)
+        self.transfer(self._FUNCTION_APPEND_OP, [int(x) for x in data], 0)
 
     def _beginOp(self, opCode) :
         if opCode == self._currentOp :
@@ -781,7 +781,7 @@ class Display(ModuloBase) :
 
         self._sendOp([self._OpDrawRect, x, y, w, h, r])
 
-    def drawTriangele(self, x0, y0, x1, y1, x2, y2) :
+    def drawTriangle(self, x0, y0, x1, y1, x2, y2) :
         """Draw a triangle"""
         self._endOp()
         self._waitOnRefresh();
@@ -818,8 +818,8 @@ class Display(ModuloBase) :
 
     def isComplete(self) :
         """ Return whether all previous drawing operations have been completed."""
-        retVal = self.transfer(self._FUNCTION_IS_COMPLETE, [], 1)
-        return retval is not None and retval[0]
+        retval = self.transfer(self._FUNCTION_IS_COMPLETE, [], 1)
+        return retval and retval[0]
 
     def isEmpty(self) :
         """Return whether the queue of drawing operations is empty. If the display
@@ -858,7 +858,7 @@ class Display(ModuloBase) :
 
         self.setFillColor(1, 1, 1)
 
-        self.drawLogo(self.width()/2-18, 10, 35, 26)
+        self.drawLogo(self.width/2-18, 10, 35, 26)
     
 
     def drawLogo(self, x, y, width, height):
@@ -878,10 +878,31 @@ class Display(ModuloBase) :
             brighter, more vivid image but may increase image burn-in and audible
             noise from the OLED driver. The default is .75."""
         
+        current = int(15*numpy.clip(current,0,1))
+
+        # we must wait until no drawing operations are still in progress.
+        while not self.isComplete() :
+            import time
+            time.sleep(.005)
+    
+        self.transfer(self._FUNCTION_SET_CURRENT, [current], 0)
+
 
     def setContrast(self, r, g, b) :
         """Set the per channel contrast values, which affect image brightness and
            color balance. The default is (.93, 0.555, 1.0)."""
+
+        contrast = [int(255*numpy.clip(r,0,1)),
+                    int(255*numpy.clip(g,0,1)),
+                    int(255*numpy.clip(b,0,1))]
+
+
+        # we must wait until no drawing operations are still in progress.
+        while not self.isComplete() :
+            import time
+            time.sleep(.005)
+    
+        self.transfer(self._FUNCTION_SET_CONTRAST,  contrast, 0)
 
 
     def _processEvent(self, eventCode, eventData) :
