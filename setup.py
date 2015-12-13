@@ -18,8 +18,7 @@ setup(name='modulo-python',
     packages=['modulo'],
     entry_points={
         'console_scripts': [
-            'modulo-list = modulo.scripts:list',
-            'modulo-identify = modulo.scripts:identify'
+            'modulo-list=modulo.scripts:list'
         ]
     }
     )

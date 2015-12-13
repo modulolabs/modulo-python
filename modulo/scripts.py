@@ -1,48 +1,53 @@
+from __future__ import print_function
+
 import modulo, sys, time
 
+def _getNameForType(deviceType) :
+    if deviceType == "co.modulo.knob":
+        return "Knob"
+    if deviceType == "co.modulo.blankslate":
+        return "Blank Slate"
+    if deviceType == "co.modulo.joystick":
+        return "Joystick"
+    if deviceType == "co.modulo.tempprobe":
+        return "Temp Probe"
+    if deviceType == "co.modulo.display":
+        return "Display"
+    if deviceType == "co.modulo.motor":
+        return "Motor Driver"
+    if deviceType == "co.modulo.ir":
+        return "IR Remote"
+    return "Unknown"
 
-def identify() :
-    if len(sys.argv) != 2 or not sys.argv[1].isdigit() :
-        print 'Specify the ID of a device to identify. For instance, '
-        print '   ',sys.argv[0],"123"
-        sys.exit(-1)
-
-    port = modulo.SerialPort()
-
-    requestedDeviceID = int(sys.argv[1])
-    found = False
-
-    deviceID = port.get_next_device_id(0)
-    while  deviceID is not None :
-        if (deviceID == requestedDeviceID) :
-            port.set_status(deviceID, port.StatusBlinking)
-            found = True
-        else :
-            port.set_status(deviceID, port.StatusOff)
-
-
-        deviceID = port.get_next_device_id(deviceID+1)
-
-    if not found :
-        print 'Could not find device with id', requestedDeviceID
-        sys.exit(-1)
-
-    time.sleep(2)
-    port.set_status(requestedDeviceID, port.StatusOff)
 
 def list() :
-    import modulo
+    import modulo, sys, argparse
 
-    port = modulo.SerialPort()
+    parser = argparse.ArgumentParser(description='List connected modulo devices')
+    parser.add_argument("-i", "--interactive",action='store_true',
+        help="interactively list modulos one at a time, blinking their LEDS to identify them")
+    args = parser.parse_args()
 
-    deviceID = port.get_next_device_id(0)
-    while  deviceID is not None :
-        print "DeviceID: ", deviceID
-        print "    device type: ", port.get_device_type(deviceID)
-        print "    manufactuer: ", port.get_manufacturer(deviceID)
-        print "    product:     ", port.get_product(deviceID)
-        print "    version:     ", port.get_version(deviceID)
-        print "    i2c address: ", port.get_address(deviceID)
+    port = modulo.Port()
 
-        deviceID = port.get_next_device_id(deviceID+1)
+    deviceID = port._getNextDeviceID(0)
+    while deviceID is not None :
+        deviceType = port._getDeviceType(deviceID)
+        version = port._getVersion(deviceID)
+        
+        if args.interactive :
+            port._setStatus(deviceID,port.StatusBlinking)
+
+        print(_getNameForType(deviceType))
+        print("         ID: ", deviceID)
+        print("    Version: ", version)
+
+        if args.interactive :
+            print()
+            print("Press return to continue")
+            sys.stdin.readline()
+            port._setStatus(deviceID, port.StatusOff)
+
+        deviceID = port._getNextDeviceID(deviceID)
+
 
