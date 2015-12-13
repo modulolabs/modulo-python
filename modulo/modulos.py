@@ -763,7 +763,10 @@ class Display(ModuloBase) :
         self._sendOp([self._OpFillScreen, int(255*r), int(255*g), int(255*b), 255])
 
     def drawLine(self, x0, y0, x1, y1) :
-        """Draw a line segment from (x0,y0) to (x1,y1)"""
+        """Draw a line segment from (x0,y0) to (x1,y1)
+
+           All values must be between 0 and 255.
+        """
         self._endOp();
         self._waitOnRefresh();
 
@@ -773,7 +776,10 @@ class Display(ModuloBase) :
 
     def drawRect(self, x, y, w, h, r=0) :
         """Draw a rectangle with the upper left corner at (x,y) and the
-           specified width, height, and corner radius."""
+           specified width, height, and corner radius.
+
+           All values must be between 0 and 255.
+        """
         self._endOp()    
         self._waitOnRefresh();
 
@@ -782,7 +788,9 @@ class Display(ModuloBase) :
         self._sendOp([self._OpDrawRect, x, y, w, h, r])
 
     def drawTriangle(self, x0, y0, x1, y1, x2, y2) :
-        """Draw a triangle"""
+        """Draw a triangle.
+
+           All values must be between 0 and 255."""
         self._endOp()
         self._waitOnRefresh();
 
