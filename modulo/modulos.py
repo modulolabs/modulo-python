@@ -722,27 +722,37 @@ class Display(ModuloBase) :
         self._endOp()
         self._waitOnRefresh()
 
-        self._sendOp([self._OpSetLineColor, int(r*255), int(g*255), int(b*255), int(a*255)])
+        r,g,b,a = [int(255*numpy.clip(x,0,1)) for x in (r,g,b,a)]
+
+        self._sendOp([self._OpSetLineColor, r, g, b, a])
 
     def setFillColor(self, r, g, b, a=1) :
         """Set the current fill color"""
         self._endOp()
         self._waitOnRefresh()
 
-        self._sendOp([self._OpSetFillColor, int(r*255), int(g*255), int(b*255), int(a*255)])
+        r,g,b,a = [int(255*numpy.clip(x,0,1)) for x in (r,g,b,a)]
+
+        self._sendOp([self._OpSetFillColor, r, g, b, a])
 
     def setTextColor(self, r, g, b, a=1) :
         """Set the current text color"""
         self._endOp()
         self._waitOnRefresh()
 
-        self._sendOp([self._OpSetTextColor, int(r*255), int(g*255), int(b*255), int(a*255)])
+        r,g,b,a = [int(255*numpy.clip(x,0,1)) for x in (r,g,b,a)]
+
+        self._sendOp([self._OpSetTextColor, r, g, b, a])
     
     def setCursor(self, x, y) :
         """Set the cursor position, which is where the next text will be drawn."""
         self._endOp()
         self._waitOnRefresh()
     
+        # Convert to 8 bit two's complement representation
+        x = ctypes.c_ubyte(int(x)).value
+        y = ctypes.c_ubyte(int(y)).value
+
         self._sendOp([self._OpSetCursor, x, y])
 
     def refresh(self, flip=False) :
@@ -760,46 +770,92 @@ class Display(ModuloBase) :
         self._endOp()
         self._waitOnRefresh()
 
-        self._sendOp([self._OpFillScreen, int(255*r), int(255*g), int(255*b), 255])
+        r,g,b = [int(255*numpy.clip(x,0,1)) for x in (r,g,b)]
+
+        self._sendOp([self._OpFillScreen, r, g, b, 255])
 
     def drawLine(self, x0, y0, x1, y1) :
         """Draw a line segment from (x0,y0) to (x1,y1)
 
-           All values must be between 0 and 255.
+           All values must be between -127 and 128.
         """
         self._endOp();
         self._waitOnRefresh();
 
-        ## XXX: _clipLine(&x0, &y0, &x1, &y1);
+        # XXX: Need to add proper line clipping implementation
+
+        # Convert to 8 bit two's complement representation
+        x0 = ctypes.c_ubyte(int(x0)).value
+        y0 = ctypes.c_ubyte(int(y0)).value
+        x1 = ctypes.c_ubyte(int(x1)).value
+        y1 = ctypes.c_ubyte(int(y1)).value
 
         self._sendOp([self._OpDrawLine, x0, y0, x1, y1])
 
     def drawRect(self, x, y, w, h, r=0) :
         """Draw a rectangle with the upper left corner at (x,y) and the
            specified width, height, and corner radius.
-
-           All values must be between 0 and 255.
         """
         self._endOp()    
         self._waitOnRefresh();
 
-        # XXX: clip
+        # Helper function which clips a dimension (pos and length) of a rect
+        def _clipRange(x, w, maxWidth) :
+            # Clip the left side to -127.
+            # To support rounded rects we don't clip to 0
+            left = -128
+            if (x < left) :
+                w += x-left
+                x = left
+            
+            # Return (0, 0) if the rect is offscreen 
+            if (w <= 0) or (x >= maxWidth):
+                return 0,0
+
+            if w > 255:
+                w = 255
+
+            # Convert x to 8 bit two's complement representation
+            x = ctypes.c_ubyte(int(x)).value
+
+            return x, int(w)
+
+        x, w = _clipRange(x, w, self.width)
+        y, h = _clipRange(y, h, self.height)
+        r = int(r)
 
         self._sendOp([self._OpDrawRect, x, y, w, h, r])
 
     def drawTriangle(self, x0, y0, x1, y1, x2, y2) :
         """Draw a triangle.
 
-           All values must be between 0 and 255."""
+           Values must be between -128 and 127."""
         self._endOp()
         self._waitOnRefresh();
+    
+        # Convert to 8 bit two's complement representation
+        x0 = ctypes.c_ubyte(int(x0)).value
+        y0 = ctypes.c_ubyte(int(y0)).value
+        x1 = ctypes.c_ubyte(int(x1)).value
+        y1 = ctypes.c_ubyte(int(y1)).value
+        x2 = ctypes.c_ubyte(int(x2)).value
+        y2 = ctypes.c_ubyte(int(y2)).value
 
         self._sendOp([self._OpDrawTriangle, x0, y0, x1, y1, x2, y2])
 
     def drawCircle(self, x, y, radius) :
-        """ Draw a circle centered at (x,y) with the specified radius"""
+        """ Draw a circle centered at (x,y) with the specified radius.
+
+            x and y must be between -128 and 127.
+            radius must be between 0 and 255
+        """
         self._endOp()
         self._waitOnRefresh();
+
+        # Convert to 8 bit two's complement representation
+        x = ctypes.c_ubyte(int(x)).value
+        y = ctypes.c_ubyte(int(y)).value
+        radius = int(radius)
 
         self._sendOp([self._OpDrawCircle, x, y, radius])        
 
