@@ -1,6 +1,13 @@
 from __future__ import print_function, division, absolute_import, unicode_literals
 import ctypes, ctypes.util
-import numpy, time
+import time
+
+def _clip(x, min, max) :
+    if x < min :
+        return min
+    if x > max :
+        return max
+    return x
 
 class ModuloBase(object) :
     """
@@ -553,14 +560,14 @@ class MotorDriver(ModuloBase) :
     def setChannel(self, channel, amount) :
         """Set a single channel (0-3) to the specified amount, between 0 and 1.
            Changes the mode to ModeDC if it's not already."""
-        intValue = int(numpy.clip(amount, 0, 1)*0xFFFF)
+        intValue = int(_clip(amount, 0, 1)*0xFFFF)
         data = [channel, intValue & 0xFF, intValue >> 8]
         self.transfer(self._FunctionSetValue, data, 0)
     
     def _setMotor(self, side, value) :
         """Sets the motor output for a side (A=0,B=2) to a specified value.
            Includes a -1<=x<=1 check on value to prevent silent failure."""
-        value = numpy.clip(value, -1, 1)
+        value = _clip(value, -1, 1)
         if value > 0 :
             self.setChannel(side, 1)
             self.setChannel(side+1, 1-value)
@@ -584,7 +591,7 @@ class MotorDriver(ModuloBase) :
 
     def setCurrentLimit(self, limit) :
         """Set the driver current limit (between 0 and 1)."""
-        data = [int(numpy.clip(limit, 0, 1)*63)]
+        data = [int(_clip(limit, 0, 1)*63)]
         self.transfer(self._FunctionSetCurrentLimit, data, 0)
 
     def setPWMFrequency(self, freq) :
@@ -657,7 +664,7 @@ class MotorDriver(ModuloBase) :
             resolution += 1
             i /= 2
 
-        ticksPerMicrostep = numpy.clip(self._usPerStep, 0, 65535)
+        ticksPerMicrostep = _clip(self._usPerStep, 0, 65535)
 
         sendData = [ticksPerMicrostep & 0xFF, ticksPerMicrostep >> 8, resolution]
         self.transfer(self._FunctionSetStepperSpeed, sendData, 0)
@@ -800,7 +807,7 @@ class Display(ModuloBase) :
         self._endOp()
         self._waitOnRefresh()
 
-        r,g,b,a = [int(255*numpy.clip(x,0,1)) for x in (r,g,b,a)]
+        r,g,b,a = [int(255*_clip(x,0,1)) for x in (r,g,b,a)]
 
         self._sendOp([self._OpSetLineColor, r, g, b, a])
 
@@ -809,7 +816,7 @@ class Display(ModuloBase) :
         self._endOp()
         self._waitOnRefresh()
 
-        r,g,b,a = [int(255*numpy.clip(x,0,1)) for x in (r,g,b,a)]
+        r,g,b,a = [int(255*_clip(x,0,1)) for x in (r,g,b,a)]
 
         self._sendOp([self._OpSetFillColor, r, g, b, a])
 
@@ -818,7 +825,7 @@ class Display(ModuloBase) :
         self._endOp()
         self._waitOnRefresh()
 
-        r,g,b,a = [int(255*numpy.clip(x,0,1)) for x in (r,g,b,a)]
+        r,g,b,a = [int(255*_clip(x,0,1)) for x in (r,g,b,a)]
 
         self._sendOp([self._OpSetTextColor, r, g, b, a])
     
@@ -848,7 +855,7 @@ class Display(ModuloBase) :
         self._endOp()
         self._waitOnRefresh()
 
-        r,g,b = [int(255*numpy.clip(x,0,1)) for x in (r,g,b)]
+        r,g,b = [int(255*_clip(x,0,1)) for x in (r,g,b)]
 
         self._sendOp([self._OpFillScreen, r, g, b, 255])
 
@@ -1020,7 +1027,7 @@ class Display(ModuloBase) :
             brighter, more vivid image but may increase image burn-in and audible
             noise from the OLED driver. The default is .75."""
         
-        current = int(15*numpy.clip(current,0,1))
+        current = int(15*_clip(current,0,1))
 
         # we must wait until no drawing operations are still in progress.
         while not self.isComplete() :
@@ -1034,9 +1041,9 @@ class Display(ModuloBase) :
         """Set the per channel contrast values, which affect image brightness and
            color balance. The default is (.93, 0.555, 1.0)."""
 
-        contrast = [int(255*numpy.clip(r,0,1)),
-                    int(255*numpy.clip(g,0,1)),
-                    int(255*numpy.clip(b,0,1))]
+        contrast = [int(255*_clip(r,0,1)),
+                    int(255*_clip(g,0,1)),
+                    int(255*_clip(b,0,1))]
 
 
         # we must wait until no drawing operations are still in progress.
