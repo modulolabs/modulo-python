@@ -24,7 +24,8 @@ class Port(object) :
     _BroadcastCommandExitBootloader = 100
 
     _CodeEvent = ord('V')
-    
+    _CodeEcho = ord('X')
+
     _StatusOff = 0
     _StatusOn = 1
     _StatusBlinking = 2
@@ -78,8 +79,10 @@ class Port(object) :
                 m = self._findModuloByID(deviceID)
                 if m :
                     m._processEvent(eventCode, eventData)
-            else :
-                print('Packet: ', packet)
+            elif (packet[0] != self._CodeEcho) :
+                # Discard echo packet if it's received out of band
+                # No other type of packet should be received.
+                print('Invalid out of band packet: ', packet)
 
             # Never wait when checking to see if there are additional packets
             packet = self._connection.getNextPacket(noWait=True)
