@@ -105,13 +105,34 @@ class Knob(ModuloBase) :
         self._position = 0
 
         self.buttonPressCallback = None
-        """Function to be called when the knob is pressed"""
+        """ A function that will be called when the knob is pressed.
+
+            The first argument to the function is the knob object that's
+            receiving the event. ie::
+
+                def onKnobPressed(knob) :
+                   ...
+        """
 
         self.buttonReleaseCallback = None
-        """Function to be called when the knob is released"""
+        """ A function that will be called when the knob is released.
+
+            The first argument to the function is the knob object that's
+            receiving the event. ie::
+
+                def onKnobReleased(knob) :
+                   ...
+        """
 
         self.positionChangeCallback = None
-        """Function to be called when the knob position changes"""
+        """ A function that will be called when the knob's position changes.
+
+            The first argument to the function is the knob object that's
+            receiving the event. ie::
+
+                def onKnobTurned(knob) :
+                   ...
+        """
 
     def setColor(self, red, green, blue) :
         """Set the color of the knob's LED. *red*, *green*, and *blue* should be
@@ -195,13 +216,34 @@ class Joystick(ModuloBase):
         self._vPos = 128
 
         self.buttonPressCallback = None
-        """Function to be called when the joystick is pressed"""
+        """ A function that will be called when the joystick is pressed.
+
+            The first argument to the function is the joystick object that's
+            receiving the event. ie::
+
+                def onJoystickPressed(joystick) :
+                   ...
+        """
 
         self.buttonReleaseCallback = None
-        """Function to be called when the joystick is released"""
+        """ A function that will be called when the joystick is released.
+
+            The first argument to the function is the joystick object that's
+            receiving the event. ie::
+
+                def onJoystickReleased(joystick) :
+                   ...
+        """
 
         self.positionChangeCallback = None
-        """Function to be called when the position changes"""
+        """ A function that will be called when the joystick position changes.
+
+            The first argument to the function is the joystick object that's
+            receiving the event. ie::
+
+                def onJoystickMoved(joystick) :
+                   ...
+        """
 
     def getButton(self) :
         """Return wehther the joystick is currently pressed"""
@@ -264,7 +306,14 @@ class TemperatureProbe(ModuloBase) :
     def __init__(self, port, deviceID = None) :
         super(TemperatureProbe, self).__init__(port, "co.modulo.tempprobe", deviceID)
         self.isValid = False
-        """Whether the temperature reading is currently valid"""
+        """ A function that will be called when the probe's temperature changes.
+
+            The first argument to the function is the temperature probe
+            that's receiving the event. ie::
+
+                def onTemperatureChanged(temperatureProbe) :
+                   ...
+        """
 
         self.temperatureChangeCallback = None
         """Function to be called when the temperature changes"""
@@ -474,10 +523,25 @@ class MotorDriver(ModuloBase) :
         super(MotorDriver, self).__init__(port, "co.modulo.motor", deviceID)
     
         self.positionReachedCallback = None
-        """Function to be called when the stepper target position is reached"""
+        """ A function that will be called when the stepper target position is
+            reached.
+
+            The first argument to the function is the MotorDriver object that's
+            receiving the event. ie::
+
+                def onPositionReached(motorDriver) :
+                   ...
+        """
 
         self.faultChangedCallback = None
-        """Function to be called when a fault state changes"""
+        """ A function that will be called when the fault status changes.
+
+            The first argument to the function is the MotorDriver object that's
+            receiving the event. ie::
+
+                def onFaultChanged(motorDriver) :
+                   ...
+        """
         
         self._fault = False
         self._stepperOffset = 0
@@ -657,10 +721,24 @@ class Display(ModuloBase) :
         """The height of the display in pixels"""
 
         self.buttonPressCallback = None
-        """The function to call when a button is pressed"""
+        """ A function that will be called when a button is pressed.
+
+            The first argument to the function is the display object that's
+            receiving the event. The second argument is the button number (0, 1, or 2) ie::
+
+                def onButtonPressed(display, button) :
+                   ...
+        """
 
         self.buttonReleaseCallback = None
-        """The function to call when a button is released"""
+        """ A function that will be called when a button is released.
+
+            The first argument to the function is the display object that's
+            receiving the event. The second argument is the button number (0, 1, or 2) ie::
+
+                def onButtonReleased(display, button) :
+                   ...
+        """
 
         self._currentOp = -1
         self._opBuffer = bytearray(self._OP_BUFFER_SIZE)
