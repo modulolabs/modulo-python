@@ -51,44 +51,35 @@ joystick = modulo.Joystick(port)
 # Create a Display object attached to the port
 display = modulo.Display(port)
 
-# Variables to store previously displayed
-# values, to avoid unnecessary redraws
-last_screen_x = 0
-last_screen_y = 0
-last_button_pressed = False
+joystick_changed = True
 
 # Screen coords go from 0..width/height-1
 max_x = display.width - 1
 max_y = display.height - 1
 
+# When we get a notification that the joystick state has changed,
+# simply set a variable to let the main loop know.
+# We don't update the display within the callback because the
+# joystick state notifications can come in at a high rate, and
+# if we update the display here then they back up resulting in
+# a backlog and laggy display.
 def onJoystickChanged(joystick):
-    global last_screen_x, last_screen_y, last_button_pressed
-    # Read the joystick state
-    jx = joystick.getHPos()
-    jy = joystick.getVPos()
-    button_pressed = joystick.getButton()
-
-    # Scale the joystick position to screen coordinates
-    screen_x = int((max_x / 2.0) - ((max_x / 2.0) * jx))
-    screen_y = int((max_y / 2.0) + ((max_y / 2.0) * jy))
-
-    # Only redraw the crosshairs if something has changed
-    # since last time
-    if ((screen_x != last_screen_x) or
-        (screen_y != last_screen_y) or
-            (button_pressed != last_button_pressed)):
-        draw_crosshairs(screen_x, screen_y, button_pressed)
-
-        last_screen_x = screen_x
-        last_screen_y = screen_y
-        last_button_pressed = button_pressed
+    global joystick_changed
+    joystick_changed = True
 
 # Register our callback function for both position and button changes
 joystick.positionChangeCallback = onJoystickChanged
 joystick.buttonPressCallback = onJoystickChanged
 
-# Draw initial screen
-onJoystickChanged(joystick)
+while True:
+    port.loop()
 
-# Process events until the program is terminated.
-port.runForever()
+    # Only update the display when the joystick state has changed
+    if joystick_changed:
+        joystick_changed = False
+
+        # Scale the joystick position to screen coordinates
+        screen_x = int((max_x / 2.0) - ((max_x / 2.0) * joystick.getHPos()))
+        screen_y = int((max_y / 2.0) + ((max_y / 2.0) * joystick.getVPos()))
+
+        draw_crosshairs(screen_x, screen_y, joystick.getButton())
