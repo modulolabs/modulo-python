@@ -22,7 +22,7 @@ class ModuloBase(object) :
         self._deviceType = deviceType
         self._deviceID = deviceID
         self._address = None
-        
+
         self._port._modulos.append(self)
 
     def __del__(self) :
@@ -46,7 +46,7 @@ class ModuloBase(object) :
         """Return the device ID or None if no modulo was found"""
         self._init()
         return self._deviceID
-    
+
     def setDeviceID(self, deviceID) :
         """Set the ID of the modulo that this object should connect to"""
         if (deviceID != self._deviceID) :
@@ -62,7 +62,7 @@ class ModuloBase(object) :
         if self._disconnected :
             if self.getAddress() != None :
                 self._disconnected = False
-    
+
     def _init(self) :
         if self._address is not None :
             return False
@@ -71,14 +71,14 @@ class ModuloBase(object) :
             deviceID = self._port._getNextDeviceID(0)
             while (deviceID is not None) :
                 m = self._port._findModuloByID(deviceID)
-                
+
                 if m is None :
                     if (self._port._getDeviceType(deviceID) == self._deviceType) :
                         self._deviceID = deviceID
                         break
 
                 deviceID = self._port._getNextDeviceID(deviceID)
-        
+
         if self._deviceID is None :
             return False
 
@@ -144,7 +144,7 @@ class Knob(ModuloBase) :
     def setColor(self, red, green, blue) :
         """Set the color of the knob's LED. *red*, *green*, and *blue* should be
         between 0 and 1"""
-        
+
         sendData = [int(red*255), int(green*255), int(blue*255)]
         self.transfer(self._FunctionSetColor, sendData, 0)
 
@@ -177,7 +177,7 @@ class Knob(ModuloBase) :
         receivedData = self.transfer(self._FunctionGetPosition, [], 2)
         if receivedData is not None :
             self._position = ctypes.c_short(receivedData[0] | (receivedData[1] << 8)).value
-        
+
         receivedData = self.transfer(self._FunctionGetButton, [], 1)
         if receivedData is not None :
             self._button = bool(receivedData[0])
@@ -195,7 +195,7 @@ class Knob(ModuloBase) :
 
             if buttonReleased and self.buttonReleaseCallback :
                 self.buttonReleaseCallback(self)
-        
+
         if eventCode == self._EventPositionChanged :
             # Convert from 16 bit unsigned to 16 bit signed
             self._position = ctypes.c_short(eventData).value
@@ -207,7 +207,7 @@ class Joystick(ModuloBase):
     """
     Connect to the module with the specified *deviceID* on the given *port*.
     If *deviceID* isn't specified, finds the first unused KnobModule.
-    """ 
+    """
 
     _FUNCTION_GET_BUTTON=0
     _FUNCTION_GET_POSITION=1
@@ -297,11 +297,11 @@ class Joystick(ModuloBase):
 
             if self.buttonReleaseCallback :
                 self.buttonReleaseCallback(self)
-        
+
         if eventCode == self._EVENT_POSITION_CHANGED :
             self._hPos = (eventData >> 8)
             self._vPos = (eventData & 0xFF)
-            
+
             if self.positionChangeCallback :
                 self.positionChangeCallback(self)
 
@@ -343,10 +343,10 @@ class TemperatureProbe(ModuloBase) :
             if not received:
                 self.isValid = False
                 return None
-        
+
             self.isValid = True
             self._temp = ctypes.c_short(received[0] | (received[1] << 8)).value
-        
+
             if self.temperatureChangeCallback :
                 self.temperatureChangeCallback(self)
 
@@ -382,16 +382,16 @@ class IRRemote(ModuloBase) :
 
     def __init__(self, port, deviceID = None) :
         super(IRRemote, self).__init__(port, "co.modulo.ir", deviceID)
-        
+
     def setBreakLength(self, l) :
         """Set the no signal time that's required before the receiver considers
             a transmission complete."""
         self.transfer(self._FUNCTION_SET_BREAK_LENGTH, [len & 0xFF, len >> 8])
-    
+
     def _processEvent(self, eventCode, eventData) :
         print('Process Event')
         availBytes = eventData
-    
+
         data = []
         i = 0
         while (i < availBytes) :
@@ -399,7 +399,7 @@ class IRRemote(ModuloBase) :
             i += 16
 
         self.transfer(self._FUNCTION_CLEAR_READ, [], 0)
-        
+
         print('IR DATA:', data)
 
 
@@ -449,23 +449,23 @@ class BlankSlate(ModuloBase) :
         result = self.transfer(self._FUNCTION_GET_DIGITAL_INPUT, [pin], 1)
         if result is not None :
             return result[0]
-    
+
     def getDigitalInputs(self) :
         """Reads the digital inputs from all 8 pins. Does not enable/disable outputs on any pins."""
         result = self.transfer(self._FUNCTION_GET_DIGITAL_INPUTS, [], 1)
         if result is not None :
             return result[0]
-    
+
     def getAnalogInput(self, pin) :
         """Disables the output on the specified pin and performs an analog read."""
         result = self.transfer(self._FUNCTION_GET_ANALOG_INPUT, [pin, 0], 2)
         if result is not None :
             return (result[0] | (result[1] << 8))/1023.0
-    
+
     def setDirection(self, pin, output) :
         """Sets the pin direction to either output or input"""
         self.transfer(self._FUNCTION_SET_DATA_DIRECTION, [pin, output], 0)
-    
+
     def setDirections(self, outputs) :
         """Sets the pin directions for all 8 pins simultaneously"""
         self.transfer(self._FUNCTION_SET_DATA_DIRECTIONS, [outputs], 0)
@@ -490,7 +490,7 @@ class BlankSlate(ModuloBase) :
 
         v = int(65535*value)
         sendData = [pin, v & 0xFF, v >> 8]
-    
+
         self.transfer(self._FUNCTION_SET_PWM_OUTPUT, sendData, 0)
 
     def setPullup(self, pin, enable) :
@@ -504,7 +504,7 @@ class BlankSlate(ModuloBase) :
     def setPWMFrequency(self, pin, value) :
         """Set the frequency for PWM signals on the specified pin."""
         sendData = [pin, value & 0xFF, value >> 8]
-    
+
         self.transfer(self._FUNCTION_SET_PWM_FREQUENCY, sendData, 0)
 
 
@@ -528,7 +528,7 @@ class MotorDriver(ModuloBase) :
 
     def __init__(self, port, deviceID = None) :
         super(MotorDriver, self).__init__(port, "co.modulo.motor", deviceID)
-    
+
         self.positionReachedCallback = None
         """ A function that will be called when the stepper target position is
             reached.
@@ -549,21 +549,21 @@ class MotorDriver(ModuloBase) :
                 def onFaultChanged(motorDriver) :
                    ...
         """
-        
+
         self._fault = False
         self._stepperOffset = 0
         self._usPerStep = 5000
         self._microsteps = 256
         self._minMicrostepDuration = 1000
-        
-    
+
+
     def setChannel(self, channel, amount) :
         """Set a single channel (0-3) to the specified amount, between 0 and 1.
            Changes the mode to ModeDC if it's not already."""
         intValue = int(_clip(amount, 0, 1)*0xFFFF)
         data = [channel, intValue & 0xFF, intValue >> 8]
         self.transfer(self._FunctionSetValue, data, 0)
-    
+
     def _setMotor(self, side, value) :
         """Sets the motor output for a side (A=0,B=2) to a specified value.
            Includes a -1<=x<=1 check on value to prevent silent failure."""
@@ -574,7 +574,7 @@ class MotorDriver(ModuloBase) :
         else :
             self.setChannel(side, 1+value)
             self.setChannel(side+1, 1)
-    
+
     def setMotorA(self, value) :
         """Set the motor output A to the specified amount, between -1 and 1.
            Changes the mode to ModeDC if it's not already."""
@@ -611,7 +611,7 @@ class MotorDriver(ModuloBase) :
     def setStepperResolution(self, microsteps, minMicrostepDuration=1000) :
         """Set the number of microsteps to take between each whole step.
             It can be 1, 2, 4, 8, 16, 32, 64, 128, or 256.
- 
+
             If the duration of a microstep (in microseconds) would be less than
             minMicrostepDuration, then the number of microsteps is decreased
             automatically. This helps to avoid skipping steps when the rate is
@@ -629,7 +629,7 @@ class MotorDriver(ModuloBase) :
         data = [targetPos & 0xFF,
                 (targetPos >> 8) & 0xFF,
                 (targetPos >> 16) & 0xFF,
-                (targetPos >> 24) & 0xFF]            
+                (targetPos >> 24) & 0xFF]
 
         self.transfer(self._FunctionSetStepperTarget, data, 0)
 
@@ -688,7 +688,7 @@ class MotorDriver(ModuloBase) :
                 self._fault = False
                 if self.faultChangedCallback :
                     self.faultChangedCallback(self)
-    
+
 
 class Display(ModuloBase) :
     """
@@ -788,10 +788,11 @@ class Display(ModuloBase) :
         if (self._currentOp == self._OpDrawString and
             self._opBufferLen == self._OP_BUFFER_SIZE-1) :
             self._endOp()
+            self._beginOp(self._OpDrawString)
 
     def _endOp(self) :
         if self._currentOp == self._OpDrawString :
-    
+
             self._opBuffer[self._opBufferLen] = 0
             self._opBufferLen += 1
             dataToSend = [x for x in self._opBuffer[:self._opBufferLen]]
@@ -833,12 +834,12 @@ class Display(ModuloBase) :
         r,g,b,a = [int(255*_clip(x,0,1)) for x in (r,g,b,a)]
 
         self._sendOp([self._OpSetTextColor, r, g, b, a])
-    
+
     def setCursor(self, x, y) :
         """Set the cursor position, which is where the next text will be drawn."""
         self._endOp()
         self._waitOnRefresh()
-    
+
         # Convert to 8 bit two's complement representation
         x = ctypes.c_ubyte(int(x)).value
         y = ctypes.c_ubyte(int(y)).value
@@ -854,7 +855,7 @@ class Display(ModuloBase) :
 
         self._sendOp([self._OpRefresh, flip])
         self._isRefreshing = True
-    
+
     def fillScreen(self, r, g, b) :
         """Fill the screen"""
         self._endOp()
@@ -886,7 +887,7 @@ class Display(ModuloBase) :
         """Draw a rectangle with the upper left corner at (x,y) and the
            specified width, height, and corner radius.
         """
-        self._endOp()    
+        self._endOp()
         self._waitOnRefresh();
 
         # Helper function which clips a dimension (pos and length) of a rect
@@ -897,8 +898,8 @@ class Display(ModuloBase) :
             if (x < left) :
                 w += x-left
                 x = left
-            
-            # Return (0, 0) if the rect is offscreen 
+
+            # Return (0, 0) if the rect is offscreen
             if (w <= 0) or (x >= maxWidth):
                 return 0,0
 
@@ -922,7 +923,7 @@ class Display(ModuloBase) :
            Values must be between -128 and 127."""
         self._endOp()
         self._waitOnRefresh();
-    
+
         # Convert to 8 bit two's complement representation
         x0 = ctypes.c_ubyte(int(x0)).value
         y0 = ctypes.c_ubyte(int(y0)).value
@@ -947,10 +948,10 @@ class Display(ModuloBase) :
         y = ctypes.c_ubyte(int(y)).value
         radius = int(radius)
 
-        self._sendOp([self._OpDrawCircle, x, y, radius])        
+        self._sendOp([self._OpDrawCircle, x, y, radius])
 
     def write(self, s) :
-        """ Write a single charachter c. You can also print to the display with
+        """ Write a string s. You can also print to the display with
             print >>display,"Hello Modulo" (Python 2) or
             print("Hello Modulo", file=display) (Python 3)"""
         self._waitOnRefresh();
@@ -961,7 +962,7 @@ class Display(ModuloBase) :
 
         for c in s :
             self._appendToOp(ord(c))
-        
+
     def setTextSize(self, size) :
         """Set the text size. This is a multiplier of the base text size,
            which is 8px high."""
@@ -1013,7 +1014,7 @@ class Display(ModuloBase) :
         self.setFillColor(1, 1, 1)
 
         self.drawLogo(self.width/2-18, 10, 35, 26)
-    
+
 
     def drawLogo(self, x, y, width, height):
         """Draw the Modulo logo"""
@@ -1031,14 +1032,14 @@ class Display(ModuloBase) :
         """Set the display's master current. Higher current values produce a
             brighter, more vivid image but may increase image burn-in and audible
             noise from the OLED driver. The default is .75."""
-        
+
         current = int(15*_clip(current,0,1))
 
         # we must wait until no drawing operations are still in progress.
         while not self.isComplete() :
             import time
             time.sleep(.005)
-    
+
         self.transfer(self._FUNCTION_SET_CURRENT, [current], 0)
 
 
@@ -1055,7 +1056,7 @@ class Display(ModuloBase) :
         while not self.isComplete() :
             import time
             time.sleep(.005)
-    
+
         self.transfer(self._FUNCTION_SET_CONTRAST,  contrast, 0)
 
 
@@ -1063,7 +1064,7 @@ class Display(ModuloBase) :
         if eventCode == self._EVENT_BUTTON_CHANGED :
             buttonPressed = eventData >> 8
             buttonReleased = eventData & 0xFF
-    
+
             self._buttonState |= buttonPressed
             self._buttonState &= buttonReleased
 

@@ -14,14 +14,14 @@ class Pong :
         self._display = modulo.Display(self._port)
         self._knob = modulo.Knob(self._port)
 
-        self._width = self._display.get_width()
-        self._height = self._display.get_height()
+        self._width = self._display.width
+        self._height = self._display.height
         self._paddleWidth = 3
         self._paddleHeight = 10
 
         self._leftPaddlePos = self._height/2
         self._rightPaddlePos = self._height/2
-        self._knobPos = self._knob.get_position()
+        self._knobPos = self._knob.getPosition()
 
         self._paused = True
         self._lastUpdateTime = time.time()
@@ -38,7 +38,7 @@ class Pong :
         self._leftScore = 0
 
     def update_input(self) :
-        newKnobPos = self._knob.get_position()
+        newKnobPos = self._knob.getPosition()
         self._rightPaddlePos += 5*(newKnobPos - self._knobPos)
         self._knobPos = newKnobPos
 
@@ -54,18 +54,18 @@ class Pong :
         # Wait for 3 seconds
         pauseStartTime = time.time()
         while time.time() < pauseStartTime+3 :
-            self._knob.set_hsv(time.time()-pauseStartTime, 1, 1)
-        self._knob.set_color(0,0,0)
+            self._knob.setHSV(time.time()-pauseStartTime, 1, 1)
+        self._knob.setColor(0,0,0)
 
         # Move the ball back to the center
-        self._ballX = self._display.get_width()/2
-        self._ballY = self._display.get_height()/2
+        self._ballX = self._display.width/2
+        self._ballY = self._display.height/2
 
         # Reset the last update time, since we want to start the game from now
         self._lastUpdateTime = time.time()
 
     def check_right_goal(self) :
-        rightGoal = self._display.get_width()-self._paddleWidth
+        rightGoal = self._display.width-self._paddleWidth
 
         if (self._ballX < rightGoal) :
             return False
@@ -137,39 +137,39 @@ class Pong :
     def draw(self) :
         self._display.clear()
 
-        self._display.draw_ellipse(self._ballX, self._ballY, 2, 2, 1)
+        self._display.drawCircle(self._ballX, self._ballY, 2)
 
-        self._display.draw_rectangle(self._width-self._paddleWidth,
+        self._display.drawRect(self._width-self._paddleWidth,
             self._rightPaddlePos-self._paddleHeight/2, self._paddleWidth,
-            self._paddleHeight,
-            fill=1);
+            self._paddleHeight);
 
-        self._display.draw_rectangle(0,
+        self._display.drawRect(0,
             self._leftPaddlePos-self._paddleHeight/2, self._paddleWidth,
-            self._paddleHeight,
-            fill=1);
+            self._paddleHeight);
 
-        self._display.set_cursor(self._width/3, 0)
-        self._display.write(self._leftScore)
+        self._display.setCursor(self._width/3, 0)
+        self._display.write("%d" % self._leftScore)
 
-        self._display.set_cursor(self._width*2/3, 0)
-        self._display.write(self._rightScore)
+        self._display.setCursor(self._width*2/3, 0)
+        self._display.write("%d" % self._rightScore)
 
         if self._paused :
-            self._display.draw_rectangle(25, 10,
-                self._width-40, self._height-20, fill=0, outline=1)
-            self._display.set_cursor(0, 15)
-            self._display.writeln("        Paused.")
-            self._display.writeln("      Press Knob")
-            self._display.writeln("      to continue")
+            self._display.setFillColor(.2,.2,.2,0.5)
+            self._display.drawRect(25, 10,
+                self._width-40, self._height-20)
+            self._display.setCursor(0, 15)
+            self._display.write("     PAUSED!\n")
+            self._display.write("     Press\n")
+            self._display.write("     knob to\n")
+            self._display.write("     continue\n")
 
-
-        self._display.update()
+        self._display.refresh()
 
     def run(self) :
         knobWasPressed = False
         while True :
-            knobIsPressed = self._knob.get_button()
+            self._port.loop()
+            knobIsPressed = self._knob.getButton()
             if knobIsPressed and not knobWasPressed :
                 self._paused = not self._paused
                 self._lastUpdateTime = time.time()
