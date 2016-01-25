@@ -650,21 +650,26 @@ class MotorDriver(ModuloBase) :
         return self._fault
 
     def _updateStepperSpeed(self) :
+        # Find the actual number of microsteps to use. If the duration of a
+        # microstep would be less than _minMicrostepDuration, then this will
+        # be less than the requested number of microsteps.
         microsteps = self._microsteps
 
         if microsteps > 256 :
             microsteps = 256
 
         while (microsteps > 1 and self._usPerStep/microsteps < self._minMicrostepDuration) :
-            microsteps /= 2
+            microsteps //= 2
 
+        # Now determine the microstep resolution, which is log2(microsteps)
         resolution = 0
         i = microsteps/2
         while i > 0 and resolution <= 8 :
             resolution += 1
-            i /= 2
+            i //= 2
 
-        ticksPerMicrostep = _clip(self._usPerStep, 0, 65535)
+        # Determine the number of 8us ticks per microstep
+        ticksPerMicrostep = _clip(self._usPerStep//(8*microsteps), 0, 65535)
 
         sendData = [ticksPerMicrostep & 0xFF, ticksPerMicrostep >> 8, resolution]
         self.transfer(self._FunctionSetStepperSpeed, sendData, 0)
